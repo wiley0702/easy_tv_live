@@ -25,6 +25,7 @@ class M3uUtil {
 
   // Notify the player only after a manual refresh has been validated.
   static final refreshedPlaylist = ValueNotifier<PlayChannelListModel?>(null);
+  static int _requestSerial = 0;
 
   static String _sourceKey(String link) => base64Url.encode(utf8.encode(
     link == 'default' ? 'wiley0702/easy_tv_live/default' : link,
@@ -34,6 +35,7 @@ class M3uUtil {
       SpUtil.getString('source_updated_${_sourceKey(link)}');
 
   static Future<PlayChannelListModel?> getDefaultM3uData({bool forceRefresh = false}) async {
+    final request = ++_requestSerial;
     final models = await getLocalData();
     if (models.isEmpty) {
       models.add(SubScribeModel(
@@ -61,6 +63,7 @@ class M3uUtil {
       if (data != null && data.trim().isNotEmpty) {
         parsed = await _validatedPlaylist(data, ua);
         if (parsed != null) {
+          if (!await _isCurrentRequest(request, link)) return null;
           // Never replace a working cache or its timestamp with invalid data.
           await SpUtil.putString(cacheKey, data);
           await SpUtil.putString('source_updated_$key',
@@ -83,6 +86,8 @@ class M3uUtil {
       }
     }
     if (parsed == null) return null;
+    // A completed request must not reactivate a subscription the user left.
+    if (!await _isCurrentRequest(request, link)) return null;
     currentPlayChannelLink = link;
     _serialNumMap.clear();
     int serial = 1;
@@ -99,6 +104,12 @@ class M3uUtil {
     }
     if (forceRefresh) refreshedPlaylist.value = parsed;
     return parsed;
+  }
+
+  static Future<bool> _isCurrentRequest(int request, String link) async {
+    final selected = await getLocalData();
+    return request == _requestSerial && selected.isNotEmpty &&
+        selected.firstWhere((source) => source.selected == true, orElse: () => selected.first).link == link;
   }
 
   static Future<PlayChannelListModel?> _validatedPlaylist(String data, String ua) async {

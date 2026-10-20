@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:easy_tv_live/entity/sub_scribe_model.dart';
@@ -59,4 +60,42 @@ void main() {
     expect(await M3uUtil.getDefaultM3uData(), isNull);
     expect(M3uUtil.lastRefreshTime(b.path), anyOf(isNull, isEmpty));
   });
+
+  test('a delayed refresh cannot overwrite a newly selected source', () async {
+    await HttpOverrides.runWithHttpOverrides(() async {
+      final requested = Completer<void>();
+      final respond = Completer<void>();
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final link = 'http://127.0.0.1:${server.port}/a.txt';
+      server.listen((request) async {
+        requested.complete();
+        await respond.future;
+        request.response.write('A,http://example.com/a');
+        await request.response.close();
+      });
+      try {
+        final b = File('${directory.path}/b.txt');
+        await b.writeAsString('B,http://example.com/b');
+        await M3uUtil.saveLocalData([SubScribeModel(link: link, selected: true)]);
+        final oldRequest = M3uUtil.getDefaultM3uData(forceRefresh: true);
+        await requested.future.timeout(const Duration(seconds: 10));
+        await M3uUtil.saveLocalData([SubScribeModel(link: b.path, local: true, selected: true)]);
+        final current = await M3uUtil.getDefaultM3uData(forceRefresh: true);
+        respond.complete();
+        expect(await oldRequest, isNull);
+        expect(M3uUtil.currentPlayChannelLink, b.path);
+        expect(M3uUtil.serialNumMap['1']!.title, 'B');
+        expect(M3uUtil.refreshedPlaylist.value, same(current));
+        expect(M3uUtil.lastRefreshTime(link), anyOf(isNull, isEmpty));
+      } finally {
+        if (!respond.isCompleted) respond.complete();
+        await server.close(force: true);
+      }
+    }, _RealHttpOverrides());
+  });
+}
+
+class _RealHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) => super.createHttpClient(context);
 }
