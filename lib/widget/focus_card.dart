@@ -3,13 +3,16 @@ import 'package:path/path.dart' as p;
 
 import '../entity/sub_scribe_model.dart';
 import '../generated/l10n.dart';
+import 'source_refresh_tile.dart';
+import 'source_editor_dialog.dart';
 
 class FocusCard extends StatefulWidget {
   final SubScribeModel model;
+  final Iterable<String> existingLinks;
   final GestureTapCallback? onDelete;
   final GestureTapCallback? onUse;
   final ValueChanged<String>? onEdit;
-  const FocusCard({super.key, required this.model, required this.onDelete, this.onUse,this.onEdit});
+  const FocusCard({super.key, required this.model, required this.onDelete, this.onUse, this.onEdit, this.existingLinks = const []});
 
   @override
   State<FocusCard> createState() => _FocusCardState();
@@ -59,116 +62,62 @@ class _FocusCardState extends State<FocusCard> {
                   decoration: BoxDecoration(color: const Color(0xA4A27672), borderRadius: BorderRadius.circular(4)),
                   child: const Text('本地', style: TextStyle(color: Colors.yellow, fontSize: 12)),
                 ),
-              Text(_calcLinkName(), style: const TextStyle(fontSize: 20)),
+              Expanded(child: Text(_calcLinkName(), style: const TextStyle(fontSize: 20))),
             ],
           ),
           const SizedBox(height: 12),
-          Text('${S.current.createTime}：${widget.model.time}', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 14)),
+          SourceRefreshTile(key: ValueKey(widget.model.link), link: widget.model.link!),
           const SizedBox(height: 12),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            alignment: WrapAlignment.end,
             children: [
-              const Spacer(),
-              if(widget.model.link != 'default' && widget.model.local != true) TextButton(
+              if (widget.model.link != 'default' && widget.model.local != true)
+                TextButton(
+                  onPressed: () async {
+                    final newLink = await showDialog<String>(
+                      context: context,
+                      builder: (_) => SourceEditorDialog(initialLink: widget.model.link!, existingLinks: widget.existingLinks),
+                    );
+                    if (newLink != null && newLink.isNotEmpty) {
+                      widget.onEdit?.call(newLink);
+                    }
+                  },
+                  child: Text(S.current.edit),
+                ),
+              TextButton(
+                onFocusChange: _onFocusChange,
                 onPressed: () async {
-                  final sureNode = FocusNode();
-                  final newLink = await showDialog<String>(
+                  final isDelete = await showDialog(
                     context: context,
                     builder: (context) {
-                      final controller = TextEditingController(text: widget.model.link);
                       return AlertDialog(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         backgroundColor: const Color(0xFF393B40),
-                        title: Text(S.current.edit, style: const TextStyle(color: Colors.white, fontSize: 20)),
-                        content: SingleChildScrollView(
-                          child: TextField(
-                            autofocus: true,
-                            controller: controller,
-                            maxLines: null,
-                            textInputAction: TextInputAction.done,
-                            style: const TextStyle(color: Colors.white),
-                            scrollPadding: const EdgeInsets.only(bottom: 200),
-                            decoration: InputDecoration(
-                              hintText: S.current.addFiledHintText,
-                              hintStyle: const TextStyle(color: Colors.white70),
-                              enabledBorder: OutlineInputBorder(
-                                borderSide: const BorderSide(color: Colors.white30),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: const BorderSide(color: Colors.white),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onSubmitted: (value){
-                              sureNode.requestFocus();
-                            },
-                            onEditingComplete: () {
-                              sureNode.requestFocus();
-                            },
-                          ),
-                        ),
+                        content: Text(S.current.dialogDeleteContent, style: const TextStyle(color: Colors.white, fontSize: 20)),
                         actions: [
                           TextButton(
-                            autofocus: false,
+                            autofocus: true,
                             onPressed: () {
-                              Navigator.pop(context);
+                              Navigator.pop(context, false);
                             },
-                            child: Text(S.current.dialogCancel, style: const TextStyle(fontSize: 14)),
+                            child: Text(S.current.dialogCancel, style: const TextStyle(fontSize: 17)),
                           ),
                           TextButton(
-                            autofocus: false,
-                            focusNode: sureNode,
                             onPressed: () {
-                              Navigator.pop(context, controller.text.trim());
+                              Navigator.pop(context, true);
                             },
-                            child: Text(S.current.dialogConfirm, style: const TextStyle(fontSize: 14)),
+                            child: Text(S.current.dialogConfirm, style: const TextStyle(fontSize: 17)),
                           ),
                         ],
                       );
                     },
                   );
-                  if (newLink != null && newLink.isNotEmpty) {
-                    widget.onEdit?.call(newLink);
+                  if (isDelete == true) {
+                    widget.onDelete?.call();
                   }
                 },
-                child: Text(S.current.edit),
+                child: Text(S.current.delete),
               ),
-              if (widget.model.selected != true && widget.model.link != 'default')
-                TextButton(
-                  onFocusChange: _onFocusChange,
-                  onPressed: () async {
-                    final isDelete = await showDialog(
-                      context: context,
-                      builder: (context) {
-                        return AlertDialog(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          backgroundColor: const Color(0xFF393B40),
-                          content: Text(S.current.dialogDeleteContent, style: const TextStyle(color: Colors.white, fontSize: 20)),
-                          actions: [
-                            TextButton(
-                              autofocus: true,
-                              onPressed: () {
-                                Navigator.pop(context, false);
-                              },
-                              child: Text(S.current.dialogCancel, style: const TextStyle(fontSize: 17)),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.pop(context, true);
-                              },
-                              child: Text(S.current.dialogConfirm, style: const TextStyle(fontSize: 17)),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                    if (isDelete == true) {
-                      widget.onDelete?.call();
-                    }
-                  },
-                  child: Text(S.current.delete),
-                ),
               TextButton(
                 onFocusChange: _onFocusChange,
                 onPressed: widget.model.selected != true ? widget.onUse : () {},

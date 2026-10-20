@@ -29,8 +29,10 @@ class _SettingPageState extends State<SettingPage> {
               const SizedBox(height: 12),
               Text(S.current.appName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              const Text('v${CheckVersionUtil.displayVersion}',
-                style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              const Text(
+                'v${CheckVersionUtil.displayVersion}',
+                style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           ListTile(
@@ -59,10 +61,7 @@ class _SettingPageState extends State<SettingPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(30)),
-                    child: Text(
-                      S.current.newVersion(_latestVersionEntity!.latestVersion!),
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
-                    ),
+                    child: Text(S.current.newVersion(_latestVersionEntity!.latestVersion!), style: const TextStyle(fontSize: 12, color: Colors.white)),
                   ),
                 const SizedBox(width: 10),
                 const Icon(Icons.arrow_right),
@@ -73,14 +72,6 @@ class _SettingPageState extends State<SettingPage> {
               setState(() {
                 _latestVersionEntity = CheckVersionUtil.latestVersionEntity;
               });
-            },
-          ),
-          ListTile(
-            title: const Text('赞赏榜'),
-            leading: const Icon(Icons.card_giftcard),
-            trailing: const Icon(Icons.arrow_right),
-            onTap: () {
-              Navigator.pushNamed(context, RouterKeys.settingReward);
             },
           ),
           ListTile(

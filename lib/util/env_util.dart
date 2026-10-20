@@ -30,10 +30,6 @@ class EnvUtil {
     return 'https://github.com/wiley0702/easy_tv_live';
   }
 
-  static String videoDefaultChannelHost() {
-    return '${proxyList[_proxyIndex]}https://raw.githubusercontent.com/wiley0702/easy_tv_live/main/temp';
-  }
-
   static String checkVersionHost() {
     return '${proxyList[_proxyIndex]}https://github.com/wiley0702/easy_tv_live/releases/latest/download/versions.json';
   }

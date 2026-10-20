@@ -1,9 +1,36 @@
-# 本仓库的源刷新与打包
+# 本仓库的源管理与打包
 
-- 手机、桌面和电视端：打开“订阅资源”，点击“更新源”。按钮更新当前选中的订阅；本地订阅重新读取文件。时间表示本机最近成功获取并解析该订阅的时间，不是源站文件修改时间。
-- 每个订阅独立保存缓存和时间；更新失败保留旧频道，使用缓存不修改成功时间。首次升级没有历史刷新时间时显示“尚未刷新”。
-- 默认频道源来自 `wiley0702/easy_tv_live/main/temp`。现有自定义订阅不受影响。
-- 设置页和电视设置底部显示 `2.9.9 · YYYY-MM-DD`；打包日期按 UTC+8 生成。开发时没有注入日期则仅显示版本号。
+本项目主要供个人自用，通过 Codex 辅助维护。当前修改仅在 Windows 11 上进行构建与运行验证；其他操作系统和设备尚未验证，不保证兼容性或可用性。
+
+- 打开“订阅资源”，在需要更新的源卡片上点击“更新源”。网络源重新获取，本地源重新读取文件；更新未使用的源不会切换播放。
+- 每个订阅独立保存缓存和更新时间。时间表示本机最近成功获取并解析该源的时间，不是源站修改时间。失败保留缓存和时间，没有成功记录时显示“尚未更新”。
+- 不再自动添加默认源；升级时移除旧内置源记录，保留用户源。所有源均可删除；删除当前源会清空播放列表，最后一个源删除后保持空列表。本地文件不会被删除。
+- 隐藏赞赏入口；桌面/电视设置默认打开订阅资源。订阅源扫码推送功能保留。
+- 设置页和电视设置底部显示 `2.9.9 · YYYY-MM-DD`。正式工作流使用 UTC+8 日期；没有注入日期时只显示版本号。
+- 添加和编辑网络源时可分别填写地址、标题及 User-Agent；已有 `tl`、`ua` 参数自动回填，留空会移除对应参数，其他 URL 参数保持原编码。User-Agent 仅用于视频播放请求。
+- 本次源管理改动已通过 16 项 Flutter 测试，通过 Windows 专用 Release 发布，保留上一版跨平台发布的 Latest 标记。Windows 验证范围见 README。
+
+## Windows 本地预览与构建
+
+使用 Flutter 3.41.5，安装 Visual Studio Build Tools 2022 的 C++ 桌面开发组件，并开启 Windows 开发者模式。以下 PowerShell 命令假设 Flutter、Python 已加入 PATH，并在项目根目录执行：
+
+```powershell
+flutter pub get
+python scripts/prepare_windows_fvp.py
+flutter test --no-pub
+$date = (Get-Date).ToString('yyyy-MM-dd')
+# 本地预览沿用已发布构建号；正式发布由工作流生成递增编号。
+$defines = @("--dart-define=BUILD_DATE=$date", '--dart-define=BUILD_NUMBER=11000301', '--dart-define=isTV=false')
+flutter run -d windows --no-pub @defines
+# 退出预览后打包：
+flutter build windows --release --no-pub --build-name=2.9.9 --build-number=11000301 @defines
+Copy-Item windows/system32/* build/windows/x64/runner/Release/ -Force
+Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "easyTV-2.9.9-$date-windows-local.zip" -Force
+```
+
+请使用短路径存放本地构建源码，例如 `C:\dev\easy_tv_live`，避免 MSVC 插件头文件超过路径长度限制。FVP 首次构建需要下载 MDK SDK；本机验证使用适配 VS2022 的 MDK v0.35.0。完整分发 Release 目录或其 ZIP，不能仅分发 EXE。
+
+本机另备有不纳入 Git 的 `preview-windows.cmd`、`test-local.cmd` 和 `build-windows.cmd`。打包脚本会将当前源码复制至较短临时路径后编译；这些入口及本机缓存不属于仓库提供的通用构建依赖。
 
 ## 发布
 

@@ -19,7 +19,7 @@ import 'package:sp_util/sp_util.dart';
 import '../entity/sub_scribe_model.dart';
 import '../generated/l10n.dart';
 import '../util/env_util.dart';
-import '../widget/source_refresh_tile.dart';
+import '../widget/source_editor_dialog.dart';
 
 class SubScribePage extends StatefulWidget {
   final bool isTV;
@@ -220,6 +220,7 @@ class _SubScribePageState extends State<SubScribePage> {
 
   _getData() async {
     final res = await M3uUtil.getLocalData();
+    if (!mounted) return;
     setState(() {
       _m3uList = res;
     });
@@ -250,11 +251,7 @@ class _SubScribePageState extends State<SubScribePage> {
       ),
       body: Column(
         children: [
-          SourceRefreshTile(
-            link: _m3uList.isEmpty ? 'default' : _m3uList.firstWhere(
-              (source) => source.selected == true, orElse: () => _m3uList.first,
-            ).link!,
-          ),
+          if (_m3uList.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('暂无订阅源，请添加网络源或本地文件')),
           if ((Platform.isAndroid || Platform.isIOS) && !widget.isTV && _remoteIP != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -280,11 +277,12 @@ class _SubScribePageState extends State<SubScribePage> {
                       return Builder(
                         builder: (context) {
                           return FocusCard(
+                            key: ValueKey(model.link),
                             model: model,
+                            existingLinks: _m3uList.map((source) => source.link!),
                             onDelete: () async {
-                              _m3uList.removeAt(index);
-                              await M3uUtil.saveLocalData(_m3uList);
-                              setState(() {});
+                              await M3uUtil.deleteSource(model.link!);
+                              await _getData();
                             },
                             onUse: () async {
                               for (var element in _m3uList) {
@@ -329,8 +327,7 @@ class _SubScribePageState extends State<SubScribePage> {
                             width: 150,
                             child: _address == null ? null : PrettyQrView.data(data: _address!),
                           ),
-                          if (_address != null)
-                            Container(margin: const EdgeInsets.only(bottom: 20), child: Text(S.current.pushAddress(_address ?? ''))),
+                          if (_address != null) Container(margin: const EdgeInsets.only(bottom: 20), child: Text(S.current.pushAddress(_address ?? ''))),
                           Text(S.current.tvPushContent),
                         ],
                       ),
@@ -405,71 +402,20 @@ class _SubScribePageState extends State<SubScribePage> {
       setState(() {
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_scrollController.positions.isNotEmpty) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
+            _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
           }
         });
       });
     }
   }
 
-  _addM3uSource() async {
-    final textController = TextEditingController();
-    final res = await showModalBottomSheet<String>(
+  Future<void> _addM3uSource() async {
+    final res = await showDialog<String>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-      builder: (context) {
-        return SingleChildScrollView(
-          child: LayoutBuilder(
-            builder: (context, _) {
-              return SizedBox(
-                height: 120 + MediaQuery.of(context).viewInsets.bottom,
-                child: Column(
-                  children: [
-                    SizedBox.fromSize(
-                      size: const Size.fromHeight(44),
-                      child: AppBar(
-                        elevation: 0,
-                        backgroundColor: Colors.transparent,
-                        title: Text(S.current.addDataSource),
-                        centerTitle: true,
-                        automaticallyImplyLeading: false,
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(context, textController.text);
-                            },
-                            child: Text(S.current.dialogConfirm),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Flexible(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-                        child: TextField(
-                          controller: textController,
-                          autofocus: true,
-                          maxLines: 1,
-                          decoration: InputDecoration(hintText: S.current.addFiledHintText, border: InputBorder.none),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-                  ],
-                ),
-              );
-            },
-          ),
-        );
-      },
+      builder: (_) => SourceEditorDialog(existingLinks: _m3uList.map((source) => source.link!)),
     );
-    if (res == null || res == '') return;
-    _pareUrl(res);
+    if (!mounted || res == null) return;
+    await _pareUrl(res);
   }
 
   _pareUrl(String res) async {
@@ -492,11 +438,7 @@ class _SubScribePageState extends State<SubScribePage> {
       setState(() {
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_scrollController.positions.isNotEmpty) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
+            _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
           }
         });
       });

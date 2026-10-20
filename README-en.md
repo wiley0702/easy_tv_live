@@ -6,14 +6,30 @@
 # EasyTV
 EasyTV is a lightweight IPTV player that supports all platforms and Android TV large screens. It is simple and easy to use. Welcome to download and experience!
 
-#### ⚠️Breaking Changes
-> Due to limitations of the development framework, starting from version v3.0, the Android platform only supports `Android 7.0` and above, the iOS platform only supports `iOS 15.6` and above, and the macOS platform only supports `macOS 11.0` and above. Please install version v2.9.9 for systems below these versions. Users on other platforms may try at their own risk.
->
-> Due to changes in system compatibility in version v3.0, to avoid overwriting old versions and to distinguish them, v3.0 adopts a new product logo and can coexist with old versions.
+This fork is based on [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/easy_tv_live). The public version remains **2.9.9**, with a build date appended, for example `2.9.9 · 2026-10-20`.
 
-#### TV Sources
-> The built-in program sources of this application come from the [IPTV-ORG](https://github.com/iptv-org/iptv) project. Thanks to this project for its open source contribution and sharing.
-> The built-in sources will automatically sync from [IPTV-ORG](https://github.com/iptv-org/iptv) daily at 7:00 and 19:00. This application does not guarantee the accessibility of third-party subscription sources; it is recommended to add your own subscription sources.
+> This project is primarily for personal use and is maintained with **Codex assistance**. The current changes have only been built and run on **Windows 11**. Other operating systems and devices have not been validated; compatibility and availability are not guaranteed.
+
+## Changes in this revision
+
+- No built-in default subscription. Start with an empty list and add your own sources. Legacy built-in records are removed during migration; user subscriptions are retained.
+- Every source can be deleted, including the active source, after confirmation. Deleting the active source clears its playlist; deleting the final source leaves the list empty. Removing a local subscription does not delete its file.
+- Each source has its own refresh button. Refreshing an inactive source does not switch playback. Network sources are fetched again; local files are read again.
+- Source cards show the last successful update time instead of creation time. This is the time the device fetched and parsed the source, not the source server's modification time. Failed updates preserve the existing cache and timestamp.
+- Donation entries are hidden. Desktop/TV settings open on subscriptions. QR-based subscription push remains available.
+- Add and edit dialogs provide separate URL, display title and User-Agent fields. Existing `tl` and `ua` query parameters are filled in automatically and can be changed or cleared.
+
+> These changes are delivered in a Windows-only release, validated on Windows 11. Select the newest Windows-specific entry in Releases. The Latest marker is retained for the earlier multi-platform release; older packages do not include all these changes.
+
+## Download and get started
+
+Published packages are available in [this fork's Releases](https://github.com/wiley0702/easy_tv_live/releases).
+
+1. On Windows, extract the entire ZIP and run `easy_tv_live.exe`. Keep the DLLs and `data` directory beside it.
+2. Open subscriptions and add a network URL or a local M3U/TXT file.
+3. Refresh the source and check its update time. Use the source selection button to change the active source.
+
+The app does not provide channels. Third-party source availability depends on the provider and your network.
 
 #### Features
 - [x] IPTV player that supports all platforms
@@ -23,10 +39,10 @@ EasyTV is a lightweight IPTV player that supports all platforms and Android TV l
 - [x] Support using Bing daily images as video backgrounds
 - [x] Automatically merge and group the same channels
 - [x] Support channel switching via number keys
-- [x] Support [Basic Authentication](https://github.com/aiyakuaile/easy_tv_live/blob/main/README-en.md#Basic-Authentication) for requesting subscription sources (new in v2.9.1)
+- [x] Support [Basic Authentication](#basic-authentication) for requesting subscription sources (new in v2.9.1)
 - [x] Support adding local files as subscription sources (new in v2.9.5)
 - [x] Remote Configuration Feature
-- [x] Support custom [User-Agent](https://github.com/aiyakuaile/easy_tv_live/blob/main/README-en.md#user-agent)（new in v2.9.7）
+- [x] Support custom [User-Agent](#user-agent)（new in v2.9.7）
 
 #### TV Version Interaction
 
@@ -60,6 +76,8 @@ button to complete.
 
 
 ### User-Agent
+Enter a User-Agent in the network source dialog, or use Edit to change it later. It applies to video playback, not subscription downloads. Leaving it blank uses the source file hint or player default. URL parameters remain supported.
+
 The subscription source supports custom User-Agent. The program will parse the User-Agent settings in the following format by default in m3u files:
 ```
 #UA-Hint: 请将 User-Agent 设置为 okHttp/Mod-1.0.0 ，否则无法观看
@@ -75,6 +93,8 @@ The subscription source supports custom User-Agent. The program will parse the U
 > Finally, add the modified subscription source to the App. After the application parses the User-Agent, there will be a toast prompt, such as: `User-Agent=okHttp/Mod-1.0.0`
 
 ### Custom Display Title for Subscription Sources
+Use the display title field when adding or editing a network source. Leave it blank to use the filename from the URL. URL parameters remain supported as described below.
+
 The subscription source supports custom display titles. You need to configure it as follows:
  ```
  https://xxxxxxxxxxxxx.m3u?tl=your-title
@@ -96,7 +116,16 @@ The fonts that support switching need to use the [easy_tv_font](https://github.c
 > If the added live source is an IPv6 address, please confirm that your current network can access IPv6 addresses normally.
 > [IPv6 Test Address](https://v6t.ipip.net/)
 
-## Preview
+## Local Windows development
+
+The local build was verified with Flutter **3.41.5**, Visual Studio Build Tools 2022 and the C++ desktop workload, including MSVC, CMake and a Windows SDK. Enable Windows Developer Mode for Flutter plugin symlinks.
+
+See the [source management and build guide (Chinese)](docs/fork-builds.md) for commands and Windows path-length handling. Preview and test locally before committing or publishing.
+
+## Interface reference (older upstream screenshots)
+
+These screenshots show the base player interface. Source management and settings may differ in the current build.
+
 
 ![image_2](https://raw.githubusercontent.com/aiyakuaile/easy_tv_live/main/img_2.jpeg)
 
@@ -104,37 +133,8 @@ The fonts that support switching need to use the [easy_tv_font](https://github.c
 ---|---
 
 
-## Sponsorship
+## Credits and contributions
 
-For easier tracking of sponsors, we recommend using WeChat Scan to make a direct donation. Thank
-<img src="https://fastly.jsdelivr.net/gh/aiyakuaile/images/appreciate.png" alt="微信赞赏" width="300">
+Thanks to [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/easy_tv_live) and its contributors for the original project, and [easy_tv_font](https://github.com/aiyakuaile/easy_tv_font) for font resources. See [LICENSE](LICENSE).
 
-## 贡献
-
-<a href="https://github.com/aiyakuaile/easy_tv_live/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=aiyakuaile/easy_tv_live" />
-</a>
-
-### Star History
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="
-      https://api.star-history.com/svg?repos=aiyakuaile/easy_tv_live&type=Date&theme=dark
-    "
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="
-      https://api.star-history.com/svg?repos=aiyakuaile/easy_tv_live&type=Date
-    "
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=aiyakuaile/easy_tv_live&type=Date"
-  />
-</picture>
-
-
-
-
+Report issues in [this fork's issue tracker](https://github.com/wiley0702/easy_tv_live/issues). Pull requests are welcome.

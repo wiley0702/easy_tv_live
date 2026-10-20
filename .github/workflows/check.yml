@@ -24,4 +24,4 @@ jobs:
           flutter-version: '3.41.5'
           cache: true
       - run: flutter pub get
-      - run: flutter test test/source_refresh_test.dart test/build_info_test.dart
+      - run: flutter test

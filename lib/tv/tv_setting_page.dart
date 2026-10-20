@@ -1,7 +1,6 @@
 import 'package:easy_tv_live/setting/setting_font_page.dart';
 import 'package:easy_tv_live/setting/setting_remote.dart';
 import 'package:easy_tv_live/setting/subscribe_page.dart';
-import 'package:easy_tv_live/tv/tv_appreciate_page.dart';
 import 'package:easy_tv_live/util/check_version_util.dart';
 import 'package:easy_tv_live/util/env_util.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +15,7 @@ class TvSettingPage extends StatefulWidget {
 }
 
 class _TvSettingPageState extends State<TvSettingPage> {
-  int _selectedIndex = -1;
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -32,19 +31,9 @@ class _TvSettingPageState extends State<TvSettingPage> {
                   child: ListView(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.card_giftcard),
-                        title: const Text('扫码赞赏'),
-                        selected: _selectedIndex == -1,
-                        autofocus: EnvUtil.isTV() ? true : false,
-                        onTap: () {
-                          setState(() {
-                            _selectedIndex = -1;
-                          });
-                        },
-                      ),
-                      ListTile(
                         leading: const Icon(Icons.subscriptions),
                         title: const Text('订阅资源'),
+                        autofocus: EnvUtil.isTV(),
                         selected: _selectedIndex == 0,
                         onTap: () {
                           setState(() {
@@ -90,7 +79,6 @@ class _TvSettingPageState extends State<TvSettingPage> {
             ),
           ),
         ),
-        if (_selectedIndex == -1) const Expanded(child: TvAppreciatePage()),
         if (_selectedIndex == 0) const Expanded(child: SubScribePage(isTV: true)),
         if (_selectedIndex == 1) const Expanded(child: SettingFontPage(isTV: true)),
         if (_selectedIndex == 2) const Expanded(child: SettingBeautifyPage()),

@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:easy_tv_live/entity/play_channel_list_model.dart';
 import 'package:easy_tv_live/util/date_util.dart';
-import 'package:easy_tv_live/util/env_util.dart';
 import 'package:easy_tv_live/util/http_util.dart';
 import 'package:flutter/material.dart';
 import 'package:sp_util/sp_util.dart';
@@ -25,27 +24,31 @@ class M3uUtil {
 
   // Notify the player only after a manual refresh has been validated.
   static final refreshedPlaylist = ValueNotifier<PlayChannelListModel?>(null);
-  static int _requestSerial = 0;
+  static final Map<String, int> _requestSerials = {};
 
-  static String _sourceKey(String link) => base64Url.encode(utf8.encode(
-    link == 'default' ? 'wiley0702/easy_tv_live/default' : link,
-  ));
+  static String _sourceKey(String link) => base64Url.encode(utf8.encode(link));
 
-  static String? lastRefreshTime(String link) =>
-      SpUtil.getString('source_updated_${_sourceKey(link)}');
+  static String? lastRefreshTime(String link) => SpUtil.getString('source_updated_${_sourceKey(link)}');
 
   static Future<PlayChannelListModel?> getDefaultM3uData({bool forceRefresh = false}) async {
-    final request = ++_requestSerial;
     final models = await getLocalData();
-    if (models.isEmpty) {
-      models.add(SubScribeModel(
-        time: DateUtil.formatDate(DateTime.now(), format: DateFormats.full),
-        link: 'default', selected: true,
-      ));
-      await saveLocalData(models);
-    }
+    if (models.isEmpty) return null;
     final source = models.firstWhere((e) => e.selected == true, orElse: () => models.first);
+    return _loadSource(source, forceRefresh: forceRefresh, activate: true);
+  }
+
+  static Future<PlayChannelListModel?> refreshSource(String link) async {
+    final models = await getLocalData();
+    final matches = models.where((source) => source.link == link);
+    if (matches.isEmpty) return null;
+    final active = models.firstWhere((source) => source.selected == true, orElse: () => models.first);
+    return _loadSource(matches.first, forceRefresh: true, activate: active.link == link);
+  }
+
+  static Future<PlayChannelListModel?> _loadSource(SubScribeModel source, {required bool forceRefresh, required bool activate}) async {
     final link = source.link!;
+    final request = (_requestSerials[link] ?? 0) + 1;
+    _requestSerials[link] = request;
     final key = _sourceKey(link);
     final cacheKey = 'source_cache_$key';
     final ua = link.startsWith('http') ? Uri.parse(link).queryParameters['ua'] ?? '' : '';
@@ -55,21 +58,17 @@ class M3uUtil {
       if (source.local == true) {
         data = await File(link).readAsString();
       } else {
-        data = await HttpUtil().getRequest<String>(
-          link == 'default' ? EnvUtil.videoDefaultChannelHost() : link,
-          isShowLoading: false,
-        );
+        data = await HttpUtil().getRequest<String>(link, isShowLoading: false);
       }
       if (data != null && data.trim().isNotEmpty) {
         parsed = await _validatedPlaylist(data, ua);
         if (parsed != null) {
-          if (!await _isCurrentRequest(request, link)) return null;
+          if (!await _isCurrentRequest(request, link, activate)) return null;
           // Never replace a working cache or its timestamp with invalid data.
           await SpUtil.putString(cacheKey, data);
-          await SpUtil.putString('source_updated_$key',
-            DateUtil.formatDate(DateTime.now(), format: DateFormats.full));
+          await SpUtil.putString('source_updated_$key', DateUtil.formatDate(DateTime.now(), format: DateFormats.full));
           // Retain this marker for existing source-selection/sync UI.
-          await SpUtil.putString('m3u_cache', data);
+          if (activate) await SpUtil.putString('m3u_cache', data);
         }
       }
     } catch (e) {
@@ -87,7 +86,8 @@ class M3uUtil {
     }
     if (parsed == null) return null;
     // A completed request must not reactivate a subscription the user left.
-    if (!await _isCurrentRequest(request, link)) return null;
+    if (!await _isCurrentRequest(request, link, activate)) return null;
+    if (!activate) return parsed;
     currentPlayChannelLink = link;
     _serialNumMap.clear();
     int serial = 1;
@@ -106,10 +106,28 @@ class M3uUtil {
     return parsed;
   }
 
-  static Future<bool> _isCurrentRequest(int request, String link) async {
+  static Future<bool> _isCurrentRequest(int request, String link, bool activate) async {
     final selected = await getLocalData();
-    return request == _requestSerial && selected.isNotEmpty &&
-        selected.firstWhere((source) => source.selected == true, orElse: () => selected.first).link == link;
+    return request == _requestSerials[link] &&
+        selected.any((source) => source.link == link) &&
+        (!activate || selected.firstWhere((source) => source.selected == true, orElse: () => selected.first).link == link);
+  }
+
+  static Future<void> deleteSource(String link) async {
+    final models = await getLocalData();
+    final wasActive = currentPlayChannelLink == link ||
+        (models.isNotEmpty && models.firstWhere((source) => source.selected == true, orElse: () => models.first).link == link);
+    _requestSerials[link] = (_requestSerials[link] ?? 0) + 1;
+    models.removeWhere((source) => source.link == link);
+    await saveLocalData(models);
+    await SpUtil.remove('source_cache_${_sourceKey(link)}');
+    await SpUtil.remove('source_updated_${_sourceKey(link)}');
+    if (wasActive) {
+      currentPlayChannelLink = null;
+      _serialNumMap.clear();
+      await SpUtil.remove('m3u_cache');
+      refreshedPlaylist.value = PlayChannelListModel(playList: []);
+    }
   }
 
   static Future<PlayChannelListModel?> _validatedPlaylist(String data, String ua) async {
@@ -130,22 +148,26 @@ class M3uUtil {
 
   // 获取本地m3u数据
   static Future<List<SubScribeModel>> getLocalData() async {
-    Completer completer = Completer();
     List<SubScribeModel> m3uList = SpUtil.getObjList('local_m3u', (v) => SubScribeModel.fromJson(v), defValue: <SubScribeModel>[])!;
-    completer.complete(m3uList);
-    final res = await completer.future;
-    return res;
+    // Migrate the previously injected built-in source without touching user sources.
+    if (m3uList.any((source) => source.link == 'default')) {
+      m3uList.removeWhere((source) => source.link == 'default');
+      await saveLocalData(m3uList);
+    }
+    return m3uList;
   }
 
   // 保存本地m3u数据
   static Future<bool> saveLocalData(List<SubScribeModel> models) async {
+    if (models.isNotEmpty && !models.any((source) => source.selected == true)) {
+      models.first.selected = true;
+    }
     final res = await SpUtil.putObjectList('local_m3u', models.map((e) => e.toJson()).toList());
     return res ?? false;
   }
 
   static bool isLiveLink(String link) {
-    return RegExp(r'^(https?|rtmps?|rtsp|rtp|udp|srt|p2p|p3p|mitv|ws|wss)://',
-      caseSensitive: false).hasMatch(link.trim());
+    return RegExp(r'^(https?|rtmps?|rtsp|rtp|udp|srt|p2p|p3p|mitv|ws|wss)://', caseSensitive: false).hasMatch(link.trim());
   }
 
   // 解析m3u文件
