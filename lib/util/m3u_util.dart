@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:easy_tv_live/entity/play_channel_list_model.dart';
@@ -6,7 +7,6 @@ import 'package:easy_tv_live/util/date_util.dart';
 import 'package:easy_tv_live/util/env_util.dart';
 import 'package:easy_tv_live/util/http_util.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_easyloading_plus/flutter_easyloading_plus.dart';
 import 'package:sp_util/sp_util.dart';
 
 import '../entity/sub_scribe_model.dart';
@@ -23,82 +23,96 @@ class M3uUtil {
 
   static String? currentPlayChannelLink = '';
 
-  // 获取默认的m3u文件
-  static Future<PlayChannelListModel?> getDefaultM3uData() async {
-    _serialNumMap.clear();
-    String m3uData = '';
+  // Notify the player only after a manual refresh has been validated.
+  static final refreshedPlaylist = ValueNotifier<PlayChannelListModel?>(null);
+
+  static String _sourceKey(String link) => base64Url.encode(utf8.encode(
+    link == 'default' ? 'wiley0702/easy_tv_live/default' : link,
+  ));
+
+  static String? lastRefreshTime(String link) =>
+      SpUtil.getString('source_updated_${_sourceKey(link)}');
+
+  static Future<PlayChannelListModel?> getDefaultM3uData({bool forceRefresh = false}) async {
     final models = await getLocalData();
-    if (models.isNotEmpty) {
-      final defaultModel = models.firstWhere((element) => element.selected == true, orElse: () => models.first);
-      currentPlayChannelLink = defaultModel.link;
-      if (defaultModel.local == true) {
-        File m3uFile = File(defaultModel.link!);
-        final isExit = await m3uFile.exists();
-        LogUtil.v('本地数据是否存在${defaultModel.link}::::::$isExit');
-        if (isExit) {
-          m3uData = await m3uFile.readAsString();
-          await SpUtil.putString('m3u_cache', m3uData);
-        } else {
-          EasyLoading.showToast(S.current.noFile);
-          return null;
-        }
-      } else {
-        final newRes = await HttpUtil().getRequest(defaultModel.link == 'default' ? EnvUtil.videoDefaultChannelHost() : defaultModel.link!);
-        if (newRes != null) {
-          LogUtil.v('已获取新数据::::::');
-          m3uData = newRes;
-          await SpUtil.putString('m3u_cache', m3uData);
-        } else {
-          final oldRes = SpUtil.getString('m3u_cache', defValue: '');
-          if (oldRes != '') {
-            LogUtil.v('已获取到历史保存的数据::::::');
-            m3uData = oldRes!;
-          }
-        }
-      }
-      if (m3uData.isEmpty) {
-        return null;
-      }
-    } else {
-      m3uData = await _fetchData();
-      final defaultModel = SubScribeModel(
+    if (models.isEmpty) {
+      models.add(SubScribeModel(
         time: DateUtil.formatDate(DateTime.now(), format: DateFormats.full),
-        link: 'default',
-        selected: true,
-      );
-      await saveLocalData([defaultModel]);
-      currentPlayChannelLink = defaultModel.link;
+        link: 'default', selected: true,
+      ));
+      await saveLocalData(models);
     }
-    String ua = '';
-    if (currentPlayChannelLink!.startsWith('http')) {
-      Uri.parse(currentPlayChannelLink!).queryParameters.forEach((key, value) {
-        if (key == 'ua') {
-          ua = value;
+    final source = models.firstWhere((e) => e.selected == true, orElse: () => models.first);
+    final link = source.link!;
+    final key = _sourceKey(link);
+    final cacheKey = 'source_cache_$key';
+    final ua = link.startsWith('http') ? Uri.parse(link).queryParameters['ua'] ?? '' : '';
+    PlayChannelListModel? parsed;
+    try {
+      final String? data;
+      if (source.local == true) {
+        data = await File(link).readAsString();
+      } else {
+        data = await HttpUtil().getRequest<String>(
+          link == 'default' ? EnvUtil.videoDefaultChannelHost() : link,
+          isShowLoading: false,
+        );
+      }
+      if (data != null && data.trim().isNotEmpty) {
+        parsed = await _validatedPlaylist(data, ua);
+        if (parsed != null) {
+          // Never replace a working cache or its timestamp with invalid data.
+          await SpUtil.putString(cacheKey, data);
+          await SpUtil.putString('source_updated_$key',
+            DateUtil.formatDate(DateTime.now(), format: DateFormats.full));
+          // Retain this marker for existing source-selection/sync UI.
+          await SpUtil.putString('m3u_cache', data);
         }
-      });
+      }
+    } catch (e) {
+      LogUtil.e('Source refresh failed: $e');
     }
-    final channelModels = await _parseM3u(m3uData, ua);
-    if (channelModels.playList!.isNotEmpty) {
-      int index = 1;
-      for (int i = 0; i < channelModels.playList!.length; i++) {
-        final playModel = channelModels.playList![i];
-        if (playModel.channel?.isNotEmpty ?? false) {
-          for (int j = 0; j < playModel.channel!.length; j++) {
-            final channel = playModel.channel![j];
-            channel.serialNum = index;
-            channel.groupIndex = i;
-            channel.channelIndex = j;
-            _serialNumMap[index.toString()] = channel;
-            index += 1;
-          }
+    if (parsed == null && !forceRefresh) {
+      final cached = SpUtil.getString(cacheKey, defValue: '') ?? '';
+      if (cached.isNotEmpty) {
+        try {
+          parsed = await _validatedPlaylist(cached, ua);
+        } catch (e) {
+          LogUtil.e('Source cache parse failed: $e');
         }
       }
     }
-    return channelModels;
+    if (parsed == null) return null;
+    currentPlayChannelLink = link;
+    _serialNumMap.clear();
+    int serial = 1;
+    for (int i = 0; i < parsed.playList!.length; i++) {
+      final channels = parsed.playList![i].channel!;
+      for (int j = 0; j < channels.length; j++) {
+        final channel = channels[j];
+        channel.serialNum = serial;
+        channel.groupIndex = i;
+        channel.channelIndex = j;
+        _serialNumMap['$serial'] = channel;
+        serial++;
+      }
+    }
+    if (forceRefresh) refreshedPlaylist.value = parsed;
+    return parsed;
+  }
+
+  static Future<PlayChannelListModel?> _validatedPlaylist(String data, String ua) async {
+    final parsed = await parsePlaylist(data, ua);
+    for (final group in parsed.playList!) {
+      group.channel!.removeWhere((channel) => channel.urls?.isEmpty ?? true);
+    }
+    parsed.playList!.removeWhere((group) => group.channel!.isEmpty);
+    return parsed.playList!.isEmpty ? null : parsed;
   }
 
   static Future<bool> isChangeChannelLink() async {
     final models = await getLocalData();
+    if (models.isEmpty) return true;
     final defaultModel = models.firstWhere((element) => element.selected == true, orElse: () => models.first);
     return currentPlayChannelLink != defaultModel.link;
   }
@@ -118,34 +132,21 @@ class M3uUtil {
     return res ?? false;
   }
 
-  static Future<String> _fetchData() async {
-    final defaultM3u = EnvUtil.videoDefaultChannelHost();
-    final res = await HttpUtil().getRequest(defaultM3u);
-    if (res == null) {
-      EasyLoading.showToast(S.current.getDefaultError);
-      return '';
-    } else {
-      return res;
-    }
-  }
-
   static bool isLiveLink(String link) {
-    final tLink = link.toLowerCase();
-    if (tLink.startsWith('http') || tLink.startsWith('r') || tLink.startsWith('p') || tLink.startsWith('s') || tLink.startsWith('w')) {
-      return true;
-    }
-    return false;
+    return RegExp(r'^(https?|rtmps?|rtsp|rtp|udp|srt|p2p|p3p|mitv|ws|wss)://',
+      caseSensitive: false).hasMatch(link.trim());
   }
 
   // 解析m3u文件
-  static Future<PlayChannelListModel> _parseM3u(String m3u, String ua) async {
-    final lines = m3u.split('\n');
+  static Future<PlayChannelListModel> parsePlaylist(String m3u, [String ua = '']) async {
+    m3u = m3u.replaceFirst('\uFEFF', '').trim();
+    final lines = m3u.split('\n').map((line) => line.trim()).toList();
     PlayChannelListModel playListModel = PlayChannelListModel(type: PlayListType.txt, playList: [], uaHint: ua);
     if (m3u.startsWith('#EXTM3U') || m3u.startsWith('#EXTINF')) {
       playListModel.type = PlayListType.m3u;
       String tempGroupTitle = '';
       String tempChannelName = '';
-      for (int i = 0; i < lines.length - 1; i++) {
+      for (int i = 0; i < lines.length; i++) {
         String line = lines[i];
         if (line.startsWith('#EXTM3U')) {
           List<String> params = line.replaceAll('"', '').split(' ');
@@ -190,7 +191,7 @@ class M3uUtil {
                 return model;
               },
             );
-            final lineNext = lines[i + 1];
+            final lineNext = i + 1 < lines.length ? lines[i + 1] : '';
             if (isLiveLink(lineNext)) {
               if (lineNext.contains('#')) {
                 channel.urls!.addAll(lineNext.split('#'));
@@ -198,7 +199,7 @@ class M3uUtil {
                 channel.urls!.add(lineNext);
               }
               i += 1;
-            } else if (isLiveLink(lines[i + 2])) {
+            } else if (i + 2 < lines.length && isLiveLink(lines[i + 2])) {
               if (lines[i + 2].contains('#')) {
                 channel.urls!.addAll(lines[i + 2].split('#'));
               } else {
@@ -216,13 +217,13 @@ class M3uUtil {
               .add(line);
         } else if (line.startsWith('#UA-Hint')) {
           if (ua.isEmpty) {
-            playListModel.uaHint = line.split(' ').firstWhere((item) => item.contains('/'));
+            playListModel.uaHint = line.split(' ').firstWhere((item) => item.contains('/'), orElse: () => '');
           }
         }
       }
     } else {
       String tempGroup = S.current.defaultText;
-      for (int i = 0; i < lines.length - 1; i++) {
+      for (int i = 0; i < lines.length; i++) {
         final line = lines[i];
         final lineList = line.split(',');
         if (lineList.length >= 2) {
@@ -261,10 +262,6 @@ class M3uUtil {
       }
     }
 
-    if (playListModel.playList!.isEmpty) {
-      EasyLoading.showError(S.current.parseError);
-    }
-    if (playListModel.uaHint!.isNotEmpty) EasyLoading.showToast('User-Agent=${playListModel.uaHint}');
     return playListModel;
   }
 

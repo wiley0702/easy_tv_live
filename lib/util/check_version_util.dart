@@ -8,11 +8,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../generated/l10n.dart';
 import 'env_util.dart';
+import 'build_info.dart';
 import 'http_util.dart';
 import 'log_util.dart';
 
 class CheckVersionUtil {
-  static const version = '2.9.9';
+  static const version = BuildInfo.version;
+  static const displayVersion = BuildInfo.displayVersion;
   static final releaseLink = EnvUtil.sourceReleaseHost();
   static final homeLink = EnvUtil.sourceHomeHost();
   static VersionEntity? latestVersionEntity;
@@ -22,7 +24,7 @@ class CheckVersionUtil {
     final latestVersionEntity = await checkRelease(false, false);
     if (latestVersionEntity != null) {
       final url =
-          '${EnvUtil.sourceDownloadHost()}/${latestVersionEntity.latestVersion}/easyTV-${latestVersionEntity.latestVersion}${isTV ? '-tv' : ''}.apk';
+          '${EnvUtil.sourceDownloadHost()}/${latestVersionEntity.releaseTag}/easyTV-${latestVersionEntity.releaseTag}${isTV ? '-tv' : ''}.apk';
       return url;
     }
     return null;
@@ -36,15 +38,17 @@ class CheckVersionUtil {
   }
 
   static Future<VersionEntity?> checkRelease([bool isShowLoading = true, isShowLatestToast = true]) async {
-    if (latestVersionEntity != null) return latestVersionEntity;
+    latestVersionEntity = null;
     try {
       final res = await HttpUtil().getRequest(EnvUtil.checkVersionHost(), isShowLoading: isShowLoading);
       if (res != null) {
-        final resMap = json.decode(res);
+        final resMap = res is String ? json.decode(res) : res;
         final latestVersion = resMap['latest_version'] as String?;
         final latestMsg = (resMap['update_log'] as List?)?.join('\n');
-        if (latestVersion != null && latestVersion.compareTo(version) > 0) {
-          latestVersionEntity = VersionEntity(latestVersion: latestVersion, latestMsg: latestMsg);
+        final latestBuild = int.tryParse('${resMap['latest_build'] ?? 0}') ?? 0;
+        final releaseTag = resMap['release_tag'] as String? ?? latestVersion;
+        if (latestVersion != null && releaseTag != null && BuildInfo.isNewer(latestVersion, latestBuild)) {
+          latestVersionEntity = VersionEntity(latestVersion: latestVersion, latestMsg: latestMsg, releaseTag: releaseTag);
           return latestVersionEntity;
         } else {
           if (isShowLatestToast) EasyLoading.showToast(S.current.latestVersion, toastPosition: EasyLoadingToastPosition.top);
@@ -113,7 +117,7 @@ class CheckVersionUtil {
                 ),
                 UpdateDownloadBtn(
                   apkUrl:
-                      '${EnvUtil.sourceDownloadHost()}/${latestVersionEntity!.latestVersion}/easyTV-${latestVersionEntity!.latestVersion}${isTV ? '-tv' : ''}'
+                      '${EnvUtil.sourceDownloadHost()}/${latestVersionEntity!.releaseTag}/easyTV-${latestVersionEntity!.releaseTag}${isTV ? '-tv' : ''}'
                       '.apk',
                 ),
                 const SizedBox(height: 30),
@@ -143,6 +147,7 @@ class CheckVersionUtil {
 class VersionEntity {
   final String? latestVersion;
   final String? latestMsg;
+  final String? releaseTag;
 
-  VersionEntity({this.latestVersion, this.latestMsg});
+  VersionEntity({this.latestVersion, this.latestMsg, this.releaseTag});
 }

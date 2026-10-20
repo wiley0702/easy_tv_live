@@ -85,7 +85,7 @@ class _TvSettingPageState extends State<TvSettingPage> {
                     ],
                   ),
                 ),
-                Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 16), child: Text('V${CheckVersionUtil.version}')),
+                Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 16), child: Text('V${CheckVersionUtil.displayVersion}')),
               ],
             ),
           ),
