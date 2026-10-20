@@ -49,3 +49,9 @@ app.*.map.json
 
 # Generated locally or downloaded by the release workflow.
 /build_metadata.json
+
+# Android release signing material must never enter source control.
+*.jks
+*.keystore
+*.p12
+github-secrets.env

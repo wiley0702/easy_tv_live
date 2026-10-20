@@ -36,6 +36,7 @@ android {
 
     signingConfigs {
         release {
+            storeType = "PKCS12"
             storeFile = file("../../keystore.jks")
             storePassword = System.getenv("KEYSTORE_PASSWORD")
             keyAlias = System.getenv("KEY_ALIAS")

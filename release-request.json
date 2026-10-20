@@ -1,5 +1,6 @@
 {
   "version": "2.9.9",
   "date": "2026-10-20",
-  "purpose": "Publish reviewed source refresh and build date changes"
+  "purpose": "Publish reviewed source refresh and build date changes",
+  "signing": "independent-pkcs12-v1"
 }
