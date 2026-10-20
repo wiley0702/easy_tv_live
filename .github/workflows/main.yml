@@ -343,7 +343,9 @@ jobs:
       - run: flutter pub get
       - name: Build Windows
         run: |
+          python scripts/prepare_windows_fvp.py
           flutter build windows --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cp windows/system32/* build/windows/x64/runner/Release/
           ls -l build/windows/x64/runner/Release
           cd build/windows/x64/runner/Release
