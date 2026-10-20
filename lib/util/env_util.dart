@@ -19,23 +19,23 @@ class EnvUtil {
   }
 
   static String sourceDownloadHost() {
-    return '${proxyList[_proxyIndex]}https://github.com/aiyakuaile/easy_tv_live/releases/download';
+    return '${proxyList[_proxyIndex]}https://github.com/wiley0702/easy_tv_live/releases/download';
   }
 
   static String sourceReleaseHost() {
-    return 'https://github.com/aiyakuaile/easy_tv_live/releases';
+    return 'https://github.com/wiley0702/easy_tv_live/releases';
   }
 
   static String sourceHomeHost() {
-    return 'https://github.com/aiyakuaile/easy_tv_live';
+    return 'https://github.com/wiley0702/easy_tv_live';
   }
 
   static String videoDefaultChannelHost() {
-    return '${proxyList[_proxyIndex]}https://raw.githubusercontent.com/aiyakuaile/easy_tv_live/main/temp';
+    return '${proxyList[_proxyIndex]}https://raw.githubusercontent.com/wiley0702/easy_tv_live/main/temp';
   }
 
   static String checkVersionHost() {
-    return '${proxyList[_proxyIndex]}https://raw.githubusercontent.com/aiyakuaile/easy_tv_live/main/versions.json';
+    return '${proxyList[_proxyIndex]}https://github.com/wiley0702/easy_tv_live/releases/latest/download/versions.json';
   }
 
   static String fontLink() {

@@ -176,6 +176,7 @@ class _LiveHomePageState extends State<LiveHomePage> {
   @override
   void initState() {
     super.initState();
+    M3uUtil.refreshedPlaylist.addListener(_onSourceRefreshed);
     EasyLoading.instance
       ..loadingStyle = EasyLoadingStyle.custom
       ..indicatorColor = Colors.black
@@ -207,6 +208,7 @@ class _LiveHomePageState extends State<LiveHomePage> {
 
   @override
   dispose() {
+    M3uUtil.refreshedPlaylist.removeListener(_onSourceRefreshed);
     WakelockPlus.disable();
     _playerController?.removeListener(_videoListener);
     _playerController?.dispose();
@@ -215,6 +217,17 @@ class _LiveHomePageState extends State<LiveHomePage> {
 
   _parseData([bool isSkipRestSerialNum = false]) async {
     final resMap = await M3uUtil.getDefaultM3uData();
+    if (!mounted) return;
+    // Preserve the currently working list when a refresh fails.
+    if (resMap == null && _channelListModel != null) return;
+    _applyPlaylist(resMap, isSkipRestSerialNum);
+  }
+
+  void _onSourceRefreshed() {
+    if (mounted) _applyPlaylist(M3uUtil.refreshedPlaylist.value, true);
+  }
+
+  void _applyPlaylist(PlayChannelListModel? resMap, bool isSkipRestSerialNum) {
     _channelListModel = resMap;
     _sourceIndex = 0;
     if (mounted && !isSkipRestSerialNum) {

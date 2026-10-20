@@ -27,20 +27,10 @@ class _SettingPageState extends State<SettingPage> {
               const SizedBox(height: 20),
               Image.asset('assets/images/logo.png', width: 80),
               const SizedBox(height: 12),
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Text(S.current.appName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Positioned(
-                    top: 0,
-                    right: -45,
-                    child: Text(
-                      'v${CheckVersionUtil.version}',
-                      style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
+              Text(S.current.appName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('v${CheckVersionUtil.displayVersion}',
+                style: TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
             ],
           ),
           ListTile(

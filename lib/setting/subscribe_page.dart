@@ -19,6 +19,7 @@ import 'package:sp_util/sp_util.dart';
 import '../entity/sub_scribe_model.dart';
 import '../generated/l10n.dart';
 import '../util/env_util.dart';
+import '../widget/source_refresh_tile.dart';
 
 class SubScribePage extends StatefulWidget {
   final bool isTV;
@@ -249,6 +250,11 @@ class _SubScribePageState extends State<SubScribePage> {
       ),
       body: Column(
         children: [
+          SourceRefreshTile(
+            link: _m3uList.isEmpty ? 'default' : _m3uList.firstWhere(
+              (source) => source.selected == true, orElse: () => _m3uList.first,
+            ).link!,
+          ),
           if ((Platform.isAndroid || Platform.isIOS) && !widget.isTV && _remoteIP != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),

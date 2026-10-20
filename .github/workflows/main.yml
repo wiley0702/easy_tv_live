@@ -2,12 +2,58 @@ name: Multi-Platform Build
 
 on:
   push:
+    branches: [main]
+    paths: [release-request.json]
     tags:
       - '*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
 jobs:
+  verify:
+    uses: ./.github/workflows/check.yml
+
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      build_number: ${{ steps.metadata.outputs.build_number }}
+      release_tag: ${{ steps.metadata.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Android signing configuration
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_ALIAS_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          names = ['KEYSTORE_FILE', 'KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_ALIAS_PASSWORD']
+          missing = [name for name in names if not os.getenv(name)]
+          if missing:
+              raise SystemExit('Missing repository signing secrets: ' + ', '.join(missing))
+          PY
+      - name: Generate build metadata (UTC+8)
+        id: metadata
+        run: python scripts/build_metadata.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-metadata
+          path: |
+            build_metadata.json
+            versions.json
+
   build_android_and_tv_ios_macos:
+    needs: [metadata, verify]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -19,41 +65,44 @@ jobs:
         with:
           flutter-version: '3.41.5'
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-metadata
       - run: flutter pub get
 
       # Build macOS
       - name: Build macOS
         run: |
-          flutter build macos --dart-define=isTV=false --release
+          flutter build macos --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release
           cd build/macos/Build/Products/Release
-          zip -r easyTV-${{ github.ref_name }}-macos.zip *.app
+          zip -r easyTV-${{ needs.metadata.outputs.release_tag }}-macos.zip *.app
 
       # Build iOS
       - name: Build iOS
         run: |
-          flutter build ios --dart-define=isTV=false --release --no-codesign
+          flutter build ios --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release --no-codesign
           cd build/ios/iphoneos
           mkdir Payload
           mv Runner.app Payload/
-          zip -r easyTV-${{ github.ref_name }}.ipa Payload
+          zip -r easyTV-${{ needs.metadata.outputs.release_tag }}.ipa Payload
 
       - name: Build AppleTV OS
         run: |
-          flutter build ios --dart-define=isTV=true --release --no-codesign
+          flutter build ios --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=true --release --no-codesign
           cd build/ios/iphoneos
           rm -rf Payload
           mkdir Payload
           mv Runner.app Payload/
-          zip -r easyTV-${{ github.ref_name }}-apple-tv.ipa Payload
+          zip -r easyTV-${{ needs.metadata.outputs.release_tag }}-apple-tv.ipa Payload
 
       - name: Upload ios-macos artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v4
         with:
           name: ios-macos-artifact
           path: |
-            build/ios/iphoneos/easyTV-${{ github.ref_name }}.ipa
-            build/ios/iphoneos/easyTV-${{ github.ref_name }}-apple-tv.ipa
-            build/macos/Build/Products/Release/easyTV-${{ github.ref_name }}-macos.zip
+            build/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}.ipa
+            build/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}-apple-tv.ipa
+            build/macos/Build/Products/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-macos.zip
 
       - name: Decode keystore
         run: |
@@ -61,35 +110,36 @@ jobs:
 
       # Build Android Mobile
       - name: Build Android APK Mobile
-        run: flutter build apk --dart-define=isTV=false --split-per-abi --release
+        run: flutter build apk --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --split-per-abi --release
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_ALIAS_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
       - name: Rename Android APK
-        run: mv build/app/outputs/apk/release/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/easyTV-${{ github.ref_name }}.apk
+        run: mv build/app/outputs/apk/release/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/easyTV-${{ needs.metadata.outputs.release_tag }}.apk
 
       # Build Android TV
       - name: Build Android APK TV
-        run: flutter build apk --dart-define=isTV=true --split-per-abi --release
+        run: flutter build apk --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=true --split-per-abi --release
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_ALIAS_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
 
       - name: Rename Android APK
-        run: mv build/app/outputs/apk/release/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/easyTV-${{ github.ref_name }}-tv.apk
+        run: mv build/app/outputs/apk/release/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/easyTV-${{ needs.metadata.outputs.release_tag }}-tv.apk
 
       - name: Upload android_and_tv artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v4
         with:
           name: android-and-tv-artifact
           path: |
-            build/app/outputs/flutter-apk/easyTV-${{ github.ref_name }}.apk
-            build/app/outputs/flutter-apk/easyTV-${{ github.ref_name }}-tv.apk
+            build/app/outputs/flutter-apk/easyTV-${{ needs.metadata.outputs.release_tag }}.apk
+            build/app/outputs/flutter-apk/easyTV-${{ needs.metadata.outputs.release_tag }}-tv.apk
             
 
   build_linux:
+    needs: [metadata, verify]
     if: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -117,11 +167,14 @@ jobs:
           sudo apt-get install -y pkg-config libblkid-dev liblzma-dev
 
       - run: flutter config --enable-linux-desktop
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-metadata
       - run: flutter pub get
 
       - name: Build Linux x64
         run: |
-          flutter build linux --dart-define=isTV=false --release
+          flutter build linux --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release
 
       - name: Create Linux packages
         run: |
@@ -130,7 +183,7 @@ jobs:
           cd build/linux/x64/release/bundle
           
           # 创建传统tar.gz包
-          tar -czf ../../../../../packages/easyTV-${{ github.ref_name }}-linux-x64.tar.gz .
+          tar -czf ../../../../../packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x64.tar.gz .
           
           # 准备deb包目录结构
           cd ../../../../../
@@ -160,7 +213,7 @@ jobs:
           # 创建DEBIAN控制文件
           cat > deb-package/DEBIAN/control << EOF
           Package: easytv-live
-          Version: ${{ github.ref_name }}
+          Version: 2.9.9-${{ needs.metadata.outputs.build_number }}
           Section: video
           Priority: optional
           Architecture: amd64
@@ -179,25 +232,25 @@ jobs:
           chmod 755 deb-package/DEBIAN/postinst
           
           # 构建deb包
-          dpkg-deb --build deb-package packages/easyTV-${{ github.ref_name }}-linux-amd64.deb
+          dpkg-deb --build deb-package packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-amd64.deb
           
           # 准备rpm包目录结构
           mkdir -p rpm-package/SPECS
           mkdir -p rpm-package/BUILD
           mkdir -p rpm-package/RPMS
           mkdir -p rpm-package/SOURCES
-          mkdir -p rpm-package/BUILDROOT/easytv-live-${{ github.ref_name }}-1.x86_64/usr/bin
-          mkdir -p rpm-package/BUILDROOT/easytv-live-${{ github.ref_name }}-1.x86_64/usr/share/applications
+          mkdir -p rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/bin
+          mkdir -p rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/share/applications
           
           # 复制文件到rpm构建目录
-          cp -r build/linux/x64/release/bundle/* rpm-package/BUILDROOT/easytv-live-${{ github.ref_name }}-1.x86_64/usr/bin/
-          cp deb-package/usr/share/applications/easytv-live.desktop rpm-package/BUILDROOT/easytv-live-${{ github.ref_name }}-1.x86_64/usr/share/applications/
+          cp -r build/linux/x64/release/bundle/* rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/bin/
+          cp deb-package/usr/share/applications/easytv-live.desktop rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/share/applications/
           
           # 创建rpm spec文件
           cat > rpm-package/SPECS/easytv-live.spec << EOF
           Name: easytv-live
-          Version: ${{ github.ref_name }}
-          Release: 1
+          Version: 2.9.9
+          Release: ${{ needs.metadata.outputs.build_number }}
           Summary: Easy TV Live Application
           License: MIT
           Group: Applications/Multimedia
@@ -216,8 +269,8 @@ jobs:
           update-desktop-database
           
           %changelog
-          * $(date +'%a %b %d %Y') Easy TV Live Team - ${{ github.ref_name }}-1
-          - Release ${{ github.ref_name }}
+          * $(date +'%a %b %d %Y') Easy TV Live Team - ${{ needs.metadata.outputs.release_tag }}-1
+          - Release ${{ needs.metadata.outputs.release_tag }}
           EOF
           
           # 安装rpm-build工具
@@ -226,7 +279,7 @@ jobs:
           
           # 构建rpm包
           rpmbuild --define "_topdir $(pwd)/rpm-package" -bb rpm-package/SPECS/easytv-live.spec
-          cp rpm-package/RPMS/x86_64/*.rpm packages/easyTV-${{ github.ref_name }}-linux-x86_64.rpm
+          cp rpm-package/RPMS/x86_64/*.rpm packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.rpm
           
           # 创建AppImage
           mkdir -p AppDir/usr/bin
@@ -261,20 +314,21 @@ jobs:
           chmod +x appimagetool
           
           # 尝试使用FUSE运行，如果失败则使用提取模式
-          ./appimagetool AppDir packages/easyTV-${{ github.ref_name }}-linux-x86_64.AppImage || \
-          ./appimagetool --appimage-extract-and-run AppDir packages/easyTV-${{ github.ref_name }}-linux-x86_64.AppImage
+          ./appimagetool AppDir packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage || \
+          ./appimagetool --appimage-extract-and-run AppDir packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage
 
       - name: Upload linux-x64 artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v4
         with:
           name: linux-x64-artifact
           path: |
-            packages/easyTV-${{ github.ref_name }}-linux-x64.tar.gz
-            packages/easyTV-${{ github.ref_name }}-linux-amd64.deb
-            packages/easyTV-${{ github.ref_name }}-linux-x86_64.rpm
-            packages/easyTV-${{ github.ref_name }}-linux-x86_64.AppImage
+            packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x64.tar.gz
+            packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-amd64.deb
+            packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.rpm
+            packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage
 
   build_windows:
+    needs: [metadata, verify]
     if: true
     runs-on: windows-latest
     steps:
@@ -283,24 +337,27 @@ jobs:
         with:
           flutter-version: '3.41.5'
       - run: flutter config --enable-windows-desktop
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-metadata
       - run: flutter pub get
       - name: Build Windows
         run: |
-          flutter build windows --dart-define=isTV=false --release
+          flutter build windows --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release
           cp windows/system32/* build/windows/x64/runner/Release/
           ls -l build/windows/x64/runner/Release
           cd build/windows/x64/runner/Release
-          7z a easyTV-${{ github.ref_name }}-windows.zip *
+          7z a easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip *
 
       - name: Upload windows artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v4
         with:
           name: windows-artifact
           path: |
-            build/windows/x64/runner/Release/easyTV-${{ github.ref_name }}-windows.zip
+            build/windows/x64/runner/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip
 
   create_release:
-    needs: [ build_linux, build_windows, build_android_and_tv_ios_macos ]
+    needs: [ metadata, build_linux, build_windows, build_android_and_tv_ios_macos ]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -324,18 +381,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ github.ref_name }}
-          draft: true
+          tag_name: ${{ needs.metadata.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          release_name: ${{ needs.metadata.outputs.release_tag }}
+          draft: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+          make_latest: ${{ github.ref == 'refs/heads/main' }}
+          fail_on_unmatched_files: true
           prerelease: false
           files: |
-            ./release/easyTV-${{ github.ref_name }}.apk
-            ./release/ios/iphoneos/easyTV-${{ github.ref_name }}.ipa
-            ./release/ios/iphoneos/easyTV-${{ github.ref_name }}-apple-tv.ipa
-            ./release/easyTV-${{ github.ref_name }}-tv.apk
-            ./release/easyTV-${{ github.ref_name }}-linux-x64.tar.gz
-            ./release/easyTV-${{ github.ref_name }}-linux-amd64.deb
-            ./release/easyTV-${{ github.ref_name }}-linux-x86_64.rpm
-            ./release/easyTV-${{ github.ref_name }}-linux-x86_64.AppImage
-            ./release/easyTV-${{ github.ref_name }}-windows.zip
-            ./release/macos/Build/Products/Release/easyTV-${{ github.ref_name }}-macos.zip
+            ./release/versions.json
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}.apk
+            ./release/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}.ipa
+            ./release/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}-apple-tv.ipa
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-tv.apk
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x64.tar.gz
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-amd64.deb
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.rpm
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage
+            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip
+            ./release/macos/Build/Products/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-macos.zip

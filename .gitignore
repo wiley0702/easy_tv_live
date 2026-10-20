@@ -46,3 +46,6 @@ app.*.map.json
 /android/app/release
 /windows/out
 /windows/.vs
+
+# Generated locally or downloaded by the release workflow.
+/build_metadata.json
