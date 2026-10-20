@@ -1,0 +1,94 @@
+name: Android Release Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Reviewed application commit to build
+        required: true
+        type: string
+      metadata_run_id:
+        description: Multi-Platform Build run with the shared build metadata
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+          cache: gradle
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-metadata
+          run-id: ${{ inputs.metadata_run_id }}
+          github-token: ${{ github.token }}
+      - name: Read shared build metadata
+        id: metadata
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('versions.json').read_text())
+          number = int(data['latest_build'])
+          tag = data['release_tag']
+          assert data['latest_version'] == '2.9.9'
+          assert all(c.isalnum() or c in '.-_' for c in tag)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write(f'number={number}\ntag={tag}\n')
+          PY
+      - name: Restore independent signing key
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+        run: |
+          python - <<'PY'
+          import base64, os
+          from pathlib import Path
+          Path('keystore.jks').write_bytes(base64.b64decode(os.environ['KEYSTORE_FILE'], validate=True))
+          PY
+      - run: flutter pub get
+      - name: Build signed ARM64 mobile and TV packages
+        env:
+          BUILD_NUMBER: ${{ steps.metadata.outputs.number }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_ALIAS_PASSWORD: ${{ secrets.KEY_ALIAS_PASSWORD }}
+        run: |
+          mkdir -p packages
+          flutter build apk --release --target-platform android-arm64 --split-per-abi --build-name=2.9.9 --build-number="$BUILD_NUMBER" --dart-define-from-file=build_metadata.json --dart-define=isTV=false
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "packages/easyTV-$RELEASE_TAG.apk"
+          flutter build apk --release --target-platform android-arm64 --split-per-abi --build-name=2.9.9 --build-number="$BUILD_NUMBER" --dart-define-from-file=build_metadata.json --dart-define=isTV=true
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "packages/easyTV-$RELEASE_TAG-tv.apk"
+      - name: Verify APK signatures
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          signer = sorted(Path(os.environ['ANDROID_HOME']).glob('build-tools/*/apksigner'))[-1]
+          for apk in Path('packages').glob('*.apk'):
+              subprocess.run([str(signer), 'verify', '--verbose', '--print-certs', str(apk)], check=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-and-tv-artifact
+          path: packages/*.apk
+          if-no-files-found: error
