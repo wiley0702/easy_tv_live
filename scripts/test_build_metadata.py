@@ -10,6 +10,7 @@ class BuildMetadataTest(unittest.TestCase):
         defines, manifest = generate(now)
         self.assertEqual(defines['BUILD_DATE'], '2026-10-21')
         self.assertEqual(manifest['latest_version'], '2.9.9')
+        self.assertGreater(manifest['latest_build'], 11100101)
         self.assertEqual(int(defines['BUILD_NUMBER']), manifest['latest_build'])
         self.assertLess(2000000000 + manifest['latest_build'], 2100000000)
         later = generate(now, run_number=2)[1]

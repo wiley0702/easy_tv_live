@@ -8,10 +8,11 @@ EasyTV is a lightweight IPTV player that supports all platforms and Android TV l
 
 This fork is based on [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/easy_tv_live). The public version remains **2.9.9**, with a build date appended, for example `2.9.9 · 2026-10-20`.
 
-> This project is primarily for personal use and is maintained with **Codex assistance**. The current changes have only been built and run on **Windows 11**. Other operating systems and devices have not been validated; compatibility and availability are not guaranteed.
+> This project is primarily for personal use and is maintained with **Codex assistance**. **Only Windows 11 has been runtime-tested.** Other platforms have automated build packages but have not been runtime-tested on their target systems or devices; compatibility and availability are not guaranteed.
 
 ## Changes in this revision
 
+- Group browsing in the standard Windows channel list does not switch playback. Click a channel to play it; reopening the list returns to the playing channel. The dedicated TV remote list retains its existing behavior.
 - No built-in default subscription. Start with an empty list and add your own sources. Legacy built-in records are removed during migration; user subscriptions are retained.
 - Every source can be deleted, including the active source, after confirmation. Deleting the active source clears its playlist; deleting the final source leaves the list empty. Removing a local subscription does not delete its file.
 - Each source has its own refresh button. Refreshing an inactive source does not switch playback. Network sources are fetched again; local files are read again.
@@ -19,7 +20,7 @@ This fork is based on [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/ea
 - Donation entries are hidden. Desktop/TV settings open on subscriptions. QR-based subscription push remains available.
 - Add and edit dialogs provide separate URL, display title and User-Agent fields. Existing `tl` and `ua` query parameters are filled in automatically and can be changed or cleared.
 
-> These changes are delivered in a Windows-only release, validated on Windows 11. Select the newest Windows-specific entry in Releases. The Latest marker is retained for the earlier multi-platform release; older packages do not include all these changes.
+> This release provides Windows, Android, iOS, macOS and Linux builds. **Only Windows 11 has been runtime-tested. Other platforms have not been tested on target devices.** Read the release notes before downloading.
 
 ## Download and get started
 

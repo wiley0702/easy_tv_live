@@ -303,7 +303,7 @@ class _LiveHomePageState extends State<LiveHomePage> {
               }
             },
             child: Scaffold(
-              drawer: ChannelDrawerPage(channelListModel: _channelListModel, onTapChannel: _onTapChannel, isLandscape: true),
+              drawer: ChannelDrawerPage(channelListModel: _channelListModel, onTapChannel: _onTapChannel, isLandscape: true, isOpen: _drawerIsOpen),
               drawerEdgeDragWidth: MediaQuery.of(context).size.width * 0.3,
               drawerScrimColor: Colors.transparent,
               onDrawerChanged: (bool isOpened) {

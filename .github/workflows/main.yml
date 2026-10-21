@@ -52,7 +52,7 @@ jobs:
             build_metadata.json
             versions.json
 
-  build_android_and_tv_ios_macos:
+  build_ios_macos:
     needs: [metadata, verify]
     runs-on: macos-latest
     steps:
@@ -104,13 +104,37 @@ jobs:
             build/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}-apple-tv.ipa
             build/macos/Build/Products/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-macos.zip
 
+  build_android:
+    needs: [metadata, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-metadata
+      - run: flutter pub get
       - name: Decode keystore
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
         run: |
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > keystore.jks
+          python - <<'PY'
+          import base64, os
+          from pathlib import Path
+          Path('keystore.jks').write_bytes(base64.b64decode(os.environ['KEYSTORE_FILE'], validate=True))
+          PY
 
       # Build Android Mobile
       - name: Build Android APK Mobile
-        run: flutter build apk --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --split-per-abi --release
+        run: flutter build apk --target-platform android-arm64 --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --split-per-abi --release
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -120,7 +144,7 @@ jobs:
 
       # Build Android TV
       - name: Build Android APK TV
-        run: flutter build apk --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=true --split-per-abi --release
+        run: flutter build apk --target-platform android-arm64 --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=true --split-per-abi --release
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -252,7 +276,7 @@ jobs:
           Version: 2.9.9
           Release: ${{ needs.metadata.outputs.build_number }}
           Summary: Easy TV Live Application
-          License: MIT
+          License: CC-BY-NC-SA-4.0
           Group: Applications/Multimedia
           BuildArch: x86_64
           Requires: gtk3, alsa-lib
@@ -330,7 +354,7 @@ jobs:
   build_windows:
     needs: [metadata, verify]
     if: true
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: subosito/flutter-action@v2
@@ -343,7 +367,10 @@ jobs:
       - run: flutter pub get
       - name: Build Windows
         run: |
+          python scripts/prepare_windows_mdk.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/prepare_windows_fvp.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter build windows --dart-define-from-file=build_metadata.json --build-name=2.9.9 --build-number=${{ needs.metadata.outputs.build_number }} --dart-define=isTV=false --release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cp windows/system32/* build/windows/x64/runner/Release/
@@ -359,7 +386,7 @@ jobs:
             build/windows/x64/runner/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip
 
   create_release:
-    needs: [ metadata, build_linux, build_windows, build_android_and_tv_ios_macos ]
+    needs: [ metadata, build_linux, build_windows, build_ios_macos, build_android ]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -378,6 +405,9 @@ jobs:
           ls -l release
           pwd
 
+      - name: Validate all packages and generate checksums
+        run: python scripts/prepare_release_assets.py
+
       - name: Upload artifacts to Release
         uses: softprops/action-gh-release@v2
         env:
@@ -385,20 +415,10 @@ jobs:
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          release_name: ${{ needs.metadata.outputs.release_tag }}
+          name: 极简TV ${{ needs.metadata.outputs.release_tag }}（多平台，仅 Win11 运行验证）
+          body_path: docs/multiplatform-release-notes.md
           draft: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           make_latest: ${{ github.ref == 'refs/heads/main' }}
           fail_on_unmatched_files: true
           prerelease: false
-          files: |
-            ./release/versions.json
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}.apk
-            ./release/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}.ipa
-            ./release/ios/iphoneos/easyTV-${{ needs.metadata.outputs.release_tag }}-apple-tv.ipa
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-tv.apk
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x64.tar.gz
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-amd64.deb
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.rpm
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage
-            ./release/easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip
-            ./release/macos/Build/Products/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-macos.zip
+          files: release-assets/*

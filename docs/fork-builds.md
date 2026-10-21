@@ -8,7 +8,7 @@
 - 隐藏赞赏入口；桌面/电视设置默认打开订阅资源。订阅源扫码推送功能保留。
 - 设置页和电视设置底部显示 `2.9.9 · YYYY-MM-DD`。正式工作流使用 UTC+8 日期；没有注入日期时只显示版本号。
 - 添加和编辑网络源时可分别填写地址、标题及 User-Agent；已有 `tl`、`ua` 参数自动回填，留空会移除对应参数，其他 URL 参数保持原编码。User-Agent 仅用于视频播放请求。
-- 本次源管理改动已通过 16 项 Flutter 测试，通过 Windows 专用 Release 发布，保留上一版跨平台发布的 Latest 标记。Windows 验证范围见 README。
+- 本次源管理改动已通过 17 项 Flutter 测试，通过多平台 Release 发布；仅 Windows 11 做过运行验证。Windows 验证范围见 README。
 
 ## Windows 本地预览与构建
 
@@ -36,7 +36,7 @@ Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "easy
 
 在 GitHub Actions 手动运行 Multi-Platform Build，或推送一个**新的** tag，会创建草稿 Release。需要直接发布时，在 PR 中更新 `release-request.json`，审查后合并到 main；仅这个文件在 main 发生更改时才触发正式发布，普通代码和频道源更新不触发。正式发布仍须通过测试、全部平台构建和附件完整性检查。重复发布请使用新 tag，避免覆盖旧包。Android 发布需要在仓库配置原有的四个签名 secrets；覆盖旧安装需要使用相同签名。
 
-一次工作流的各平台共用同一份 `build_metadata.json`，注入打包日期、内部构建号，公开版本号仍为 2.9.9。构建号为 `11000000 + GITHUB_RUN_NUMBER × 100 + GITHUB_RUN_ATTEMPT`，后续运行递增，同一次运行重试也有独立编号。生成时会检查 Android ABI 编码范围；不要发布比最新已发布运行更早的运行重试产物。
+一次工作流的各平台共用同一份 `build_metadata.json`，注入打包日期、内部构建号，公开版本号仍为 2.9.9。构建号为 `12000000 + GITHUB_RUN_NUMBER × 100 + GITHUB_RUN_ATTEMPT`，后续运行递增，同一次运行重试也有独立编号。生成时会检查 Android ABI 编码范围；不要发布比最新已发布运行更早的运行重试产物。
 
 生成的 `versions.json` 随安装包附在草稿 Release 中。确认附件齐全后发布为最新正式 Release，客户端从 `releases/latest/download/versions.json` 检查版本和构建号；同版本的新构建也可提示更新。下载使用 manifest 的 `release_tag`，与包文件名保持一致。未发布的草稿不会触发客户端更新。根目录旧的 `versions.json` 不再作为在线更新依据。
 

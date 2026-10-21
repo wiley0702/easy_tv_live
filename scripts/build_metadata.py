@@ -11,7 +11,7 @@ def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1):
     # get unique codes; a subsequent workflow run has a higher code.
     if not 1 <= run_attempt < 100:
         raise ValueError('Run attempt must be between 1 and 99')
-    number = 11000000 + run_number * 100 + run_attempt
+    number = 12000000 + run_number * 100 + run_attempt
     if not 10260922 < number < 100000000:
         raise ValueError('Build number is outside the supported Android range')
     tag = ref_name if ref_type == 'tag' else f'2.9.9-{local:%Y%m%d}-{number}'
@@ -23,7 +23,7 @@ def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1):
         'latest_build': number,
         'build_date': local.strftime('%Y-%m-%d'),
         'release_tag': tag,
-        'update_log': ['增加订阅源刷新按钮和最近成功刷新时间', '显示打包日期，支持同版本构建更新'],
+        'update_log': ['切换分组仅浏览，点击频道才换台（Windows 常用界面）', '逐源更新、删除及标题和 User-Agent 编辑', '仅 Windows 11 做过运行验证，其他平台未实机验证'],
     }
 
 
