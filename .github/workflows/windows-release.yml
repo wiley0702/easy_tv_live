@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: publish-${{ github.repository }}
+  cancel-in-progress: false
+
 env:
   PUB_HOSTED_URL: https://pub.flutter-io.cn
 
@@ -27,6 +31,8 @@ jobs:
           flutter-version: '3.41.5'
           cache: true
       - name: Prepare dependencies and metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           flutter pub get

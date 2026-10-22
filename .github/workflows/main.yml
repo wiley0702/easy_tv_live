@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: publish-${{ github.repository }}
+  cancel-in-progress: false
+
 env:
   PUB_HOSTED_URL: https://pub.flutter-io.cn
 
@@ -44,6 +48,8 @@ jobs:
           PY
       - name: Generate build metadata (UTC+8)
         id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python scripts/build_metadata.py
       - uses: actions/upload-artifact@v4
         with:

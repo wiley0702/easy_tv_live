@@ -1,5 +1,6 @@
 /// Edit app-specific query parameters without re-encoding signed URL parameters.
 class SourceLink {
+  static bool isValidSubscription(String link) => isValid(link) && !(parameter(link, 'ua') ?? '').contains(RegExp(r'[\r\n]'));
   static String? parameter(String link, String name) {
     try {
       return Uri.tryParse(link)?.queryParameters[name];

@@ -20,7 +20,7 @@ class HttpUtil {
   }
 
   HttpUtil._() {
-    _dio = Dio(options)..interceptors.add(LogInterceptor(requestBody: true, requestHeader: false, responseBody: false, logPrint: LogUtil.v));
+    _dio = Dio(options)..interceptors.add(LogInterceptor(requestBody: false, requestHeader: false, responseBody: false, logPrint: LogUtil.v));
   }
 
   Future<T?> postRequest<T>(

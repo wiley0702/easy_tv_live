@@ -25,10 +25,13 @@ import 'util/env_util.dart';
 import 'util/epg_util.dart';
 import 'util/log_util.dart';
 import 'util/m3u_util.dart';
+import 'util/playlist_selection.dart';
 import 'widget/empty_page.dart';
 
 class LiveHomePage extends StatefulWidget {
-  const LiveHomePage({super.key});
+  const LiveHomePage({super.key, this.initialPlaylist, this.controllerFactory});
+  final PlayChannelListModel? initialPlaylist;
+  final VideoPlayerController Function(Uri, Map<String, String>)? controllerFactory;
 
   @override
   State<LiveHomePage> createState() => _LiveHomePageState();
@@ -48,116 +51,119 @@ class _LiveHomePageState extends State<LiveHomePage> {
   bool isBuffering = false;
 
   bool isPlaying = false;
-  double aspectRatio = 16/9;
+  double aspectRatio = 16 / 9;
 
   bool _drawerIsOpen = false;
 
   int _channelSerialNum = 1;
 
-  _playVideo(String entMsg) async {
-    if (_currentChannel == null) return;
-    _channelSerialNum = _currentChannel!.serialNum ?? 1;
-    int timeoutNum = 15;
-    if (mounted) {
-      context.read<ThemeProvider>().setPrePlaySerialNum(_channelSerialNum);
-      timeoutNum = context.read<ThemeProvider>().timeoutSwitchLine;
-    }
-    toastString = S.current.lineToast(_sourceIndex + 1, _currentChannel!.title ?? '');
-    setState(() {});
-    final url = _currentChannel!.urls![_sourceIndex > _currentChannel!.urls!.length - 1 ? 0 : _sourceIndex].toString();
-    LogUtil.v('PlayVideo:【$entMsg】正在播放:$_sourceIndex::${_currentChannel!.toJson()}');
+  int _playGeneration = 0;
+  Timer? _retryTimer;
+
+  bool _isCurrentPlayback(int generation) => mounted && generation == _playGeneration;
+
+  Future<void> _disposeController(VideoPlayerController? controller) async {
+    if (controller == null) return;
+    controller.removeListener(_videoListener);
     try {
-      if (_playerController != null) {
-        _playerController?.removeListener(_videoListener);
-        await _playerController?.pause();
-        if (_playerController!.value.isInitialized) {
-          await _playerController?.dispose();
-        }
-        _playerController = null;
-        setState(() {});
-      }
-      await Future.delayed(Duration.zero);
-      LogUtil.v('检测User-Agent::::::${_channelListModel?.uaHint}');
-      final httpHeader = <String, String>{};
-      if (_channelListModel != null && _channelListModel!.uaHint != null && _channelListModel!.uaHint!.isNotEmpty) {
-        httpHeader['User-Agent'] = _channelListModel!.uaHint!;
-      }
-      _playerController = VideoPlayerController.networkUrl(
-        Uri.parse(url),
-        videoPlayerOptions: VideoPlayerOptions(
-          allowBackgroundPlayback: false,
-          mixWithOthers: false,
-          webOptions: const VideoPlayerWebOptions(controls: VideoPlayerWebOptionsControls.enabled()),
-        ),
-        httpHeaders: httpHeader,
-      )..setVolume(1.0);
-      await _playerController!.initialize().timeout(
-        Duration(seconds: timeoutNum),
-        onTimeout: () {
-          LogUtil.v('视频初始化超时');
-          throw TimeoutException('Video initialization timeout', Duration(seconds: timeoutNum));
-        },
-      );
-      _playerController!.addListener(_videoListener);
-      _playerController!.play();
-      setState(() {
-        toastString = S.current.loading;
-        aspectRatio = _playerController?.value.aspectRatio ?? 16/9;
-      });
-    } catch (e) {
-      LogUtil.v('播放出错:::::$e');
-      _sourceIndex += 1;
-      if (_sourceIndex > _currentChannel!.urls!.length - 1) {
-        _sourceIndex = _currentChannel!.urls!.length - 1;
-        setState(() {
-          toastString = S.current.playError(_currentChannel!.title ?? '');
-        });
-      } else {
-        setState(() {
-          toastString = S.current.switchLine(_sourceIndex + 1);
-        });
-        await Future.delayed(const Duration(seconds: 2));
-        _playVideo('错误拦截后再次进入，并触发切换线路');
-      }
+      await controller.dispose().timeout(const Duration(seconds: 3));
+    } catch (error) {
+      LogUtil.e('Player disposal failed: $error');
     }
   }
 
-  _videoListener() async {
-    if (_playerController == null) return;
-    // LogUtil.v('播放状态:::::${_playerController!.value.toString()}');
-    if (_playerController!.value.hasError && !_playerController!.value.isCompleted) {
-      _sourceIndex += 1;
-      if (_sourceIndex > _currentChannel!.urls!.length - 1) {
-        if (_playerController!.value.errorDescription != null) {
-          setState(() {
-            toastString = S.current.playError(_currentChannel!.title ?? '');
-          });
-        } else {
-          _sourceIndex = 0;
-          setState(() {
-            toastString = S.current.playReconnect;
-          });
-          await Future.delayed(const Duration(seconds: 2));
-          _playVideo('videoListener事件监听进入:触发播放重连:::');
-        }
-      } else {
-        setState(() {
-          toastString = '${S.current.switchLine(_sourceIndex + 1)}...';
-        });
-        await Future.delayed(const Duration(seconds: 2));
-        _playVideo('videoListener事件监听进入:触发切换线路:::');
-      }
+  Future<void> _playVideo(String entMsg) async {
+    final generation = ++_playGeneration;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final channel = _currentChannel;
+    final urls = channel?.urls;
+    if (!mounted) return;
+    if (channel == null || urls == null || urls.isEmpty) {
+      final old = _playerController;
+      _playerController = null;
+      await _disposeController(old);
       return;
     }
-    if (isBuffering != _playerController!.value.isBuffering) {
+    _sourceIndex = _sourceIndex.clamp(0, urls.length - 1);
+    final line = _sourceIndex;
+    final url = urls[line];
+    final ua = _channelListModel?.uaHint ?? '';
+    _channelSerialNum = channel.serialNum ?? 1;
+    context.read<ThemeProvider>().setPrePlaySerialNum(_channelSerialNum);
+    final timeout = context.read<ThemeProvider>().timeoutSwitchLine;
+    final old = _playerController;
+    _playerController = null;
+    setState(() {
+      toastString = S.current.lineToast(line + 1, channel.title ?? '');
+      isPlaying = false;
+    });
+    await _disposeController(old);
+    if (!_isCurrentPlayback(generation)) return;
+    final headers = ua.isEmpty ? <String, String>{} : {'User-Agent': ua};
+    VideoPlayerController? controller;
+    try {
+      controller =
+          widget.controllerFactory?.call(Uri.parse(url), headers) ??
+          VideoPlayerController.networkUrl(
+            Uri.parse(url),
+            videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: false, mixWithOthers: false),
+            httpHeaders: headers,
+          );
+      _playerController = controller;
+      await controller.initialize().timeout(Duration(seconds: timeout));
+      if (!_isCurrentPlayback(generation)) return;
+      await controller.setVolume(1);
+      if (!_isCurrentPlayback(generation)) return;
+      controller.addListener(_videoListener);
+      await controller.play();
+      if (!_isCurrentPlayback(generation)) return;
       setState(() {
-        isBuffering = _playerController!.value.isBuffering;
+        toastString = S.current.loading;
+        aspectRatio = controller!.value.aspectRatio;
       });
+    } catch (error) {
+      if (!_isCurrentPlayback(generation)) return;
+      LogUtil.e('Playback initialization failed: $error');
+      _playerController = null;
+      await _disposeController(controller);
+      if (_isCurrentPlayback(generation)) _scheduleNextLine(generation, channel, line);
     }
+  }
 
-    if (isPlaying != _playerController!.value.isPlaying) {
+  void _scheduleNextLine(int generation, Channel channel, int line) {
+    if (!_isCurrentPlayback(generation) || _retryTimer != null) return;
+    final next = line + 1;
+    if (next >= (channel.urls?.length ?? 0)) {
       setState(() {
-        isPlaying = _playerController!.value.isPlaying;
+        isPlaying = false;
+        isBuffering = false;
+        toastString = S.current.playError(channel.title ?? '');
+      });
+      return;
+    }
+    setState(() => toastString = S.current.switchLine(next + 1));
+    _retryTimer = Timer(const Duration(seconds: 2), () {
+      _retryTimer = null;
+      if (!_isCurrentPlayback(generation) || !identical(channel, _currentChannel)) return;
+      _sourceIndex = next;
+      _playVideo('fallback');
+    });
+  }
+
+  void _videoListener() {
+    final controller = _playerController;
+    final channel = _currentChannel;
+    if (!mounted || controller == null || channel == null) return;
+    if (controller.value.hasError && !controller.value.isCompleted) {
+      controller.removeListener(_videoListener);
+      _scheduleNextLine(_playGeneration, channel, _sourceIndex);
+      return;
+    }
+    if (isBuffering != controller.value.isBuffering || isPlaying != controller.value.isPlaying) {
+      setState(() {
+        isBuffering = controller.value.isBuffering;
+        isPlaying = controller.value.isPlaying;
       });
     }
   }
@@ -187,6 +193,11 @@ class _LiveHomePageState extends State<LiveHomePage> {
   }
 
   _loadData() async {
+    if (!mounted) return;
+    if (widget.initialPlaylist != null) {
+      _applyPlaylist(widget.initialPlaylist, true);
+      return;
+    }
     await RemoteUtil.getRemoteData(context);
     await _parseData(true);
     if (mounted) {
@@ -208,10 +219,12 @@ class _LiveHomePageState extends State<LiveHomePage> {
 
   @override
   dispose() {
+    _playGeneration++;
+    _retryTimer?.cancel();
     M3uUtil.refreshedPlaylist.removeListener(_onSourceRefreshed);
     WakelockPlus.disable();
-    _playerController?.removeListener(_videoListener);
-    _playerController?.dispose();
+    unawaited(_disposeController(_playerController));
+    _playerController = null;
     super.dispose();
   }
 
@@ -228,16 +241,40 @@ class _LiveHomePageState extends State<LiveHomePage> {
   }
 
   void _applyPlaylist(PlayChannelListModel? resMap, bool isSkipRestSerialNum) {
+    final previous = _currentChannel;
+    final previousUa = _channelListModel?.uaHint;
     _channelListModel = resMap;
-    _sourceIndex = 0;
     if (mounted && !isSkipRestSerialNum) {
       context.read<ThemeProvider>().setPrePlaySerialNum(1);
     }
     if ((_channelListModel?.playList?.isNotEmpty) ?? false) {
       if (mounted) {
         final preNum = context.read<ThemeProvider>().prePlaySerialNum;
-        final channel = M3uUtil.serialNumMap[preNum.toString()];
-        _onTapChannel(channel ?? M3uUtil.serialNumMap['1']);
+        final matched = isSkipRestSerialNum ? PlaylistSelection.match(previous, _channelListModel!) : null;
+        final channel = matched ?? (previous == null ? M3uUtil.serialNumMap[preNum.toString()] : null) ?? M3uUtil.serialNumMap['1'];
+        final sameStream =
+            matched != null &&
+            previousUa == _channelListModel?.uaHint &&
+            _sourceIndex < (matched.urls?.length ?? 0) &&
+            _sourceIndex < (previous?.urls?.length ?? 0) &&
+            matched.urls![_sourceIndex] == previous!.urls![_sourceIndex] &&
+            _playerController?.value.isInitialized == true &&
+            _playerController?.value.hasError == false &&
+            _retryTimer == null;
+        if (sameStream) {
+          setState(() {
+            _currentChannel = matched;
+            _channelSerialNum = matched.serialNum ?? 1;
+            _channelListModel!.playGroupIndex = matched.groupIndex;
+            _channelListModel!.playChannelIndex = matched.channelIndex;
+          });
+          context.read<ThemeProvider>().setPrePlaySerialNum(_channelSerialNum);
+        } else {
+          _onTapChannel(channel);
+          if (isSkipRestSerialNum && previous != null && matched == null) {
+            EasyLoading.showToast('原频道已移除，已切换到第一个可用频道');
+          }
+        }
         if (_channelListModel!.type == PlayListType.m3u) {
           if (_channelListModel?.epgUrl != null && _channelListModel?.epgUrl != '') {
             EpgUtil.loadEPGXML(_channelListModel!.epgUrl!);
@@ -245,10 +282,16 @@ class _LiveHomePageState extends State<LiveHomePage> {
         }
       }
     } else {
+      _playGeneration++;
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      final old = _playerController;
+      _playerController = null;
+      unawaited(_disposeController(old));
       setState(() {
         _currentChannel = null;
-        _playerController?.dispose();
-        _playerController = null;
+        isPlaying = false;
+        isBuffering = false;
         toastString = 'UNKNOWN';
       });
     }
@@ -295,11 +338,7 @@ class _LiveHomePageState extends State<LiveHomePage> {
             canPop: false,
             onPopInvokedWithResult: (didPop, _) {
               if (!didPop) {
-                SystemChrome.setPreferredOrientations([
-                  DeviceOrientation.portraitUp,
-                  DeviceOrientation.landscapeLeft,
-                  DeviceOrientation.landscapeRight,
-                ]);
+                SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
               }
             },
             child: Scaffold(

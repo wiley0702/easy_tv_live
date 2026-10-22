@@ -63,14 +63,14 @@ class _MobileVideoWidgetState extends State<MobileVideoWidget> {
             if (res != null && res != '') {
               widget.controller?.pause();
               final uri = Uri.parse(res.toString());
-              if (uri.host.contains('9928')) {
+              if (uri.port == 9928 || uri.queryParameters['mode'] == 'remote-config') {
                 launchUrl(uri, mode: LaunchMode.externalApplication);
                 return;
               }
               await Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (ctx) {
-                    return SubScribePage(remoteIp: uri.host, isTV: false);
+                    return SubScribePage(remoteIp: uri.host, remotePort: uri.hasPort ? uri.port : 8828, isTV: false);
                   },
                 ),
               );

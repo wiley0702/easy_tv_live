@@ -36,7 +36,7 @@ Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "easy
 
 在 GitHub Actions 手动运行 Multi-Platform Build，或推送一个**新的** tag，会创建草稿 Release。需要直接发布时，在 PR 中更新 `release-request.json`，审查后合并到 main；仅这个文件在 main 发生更改时才触发正式发布，普通代码和频道源更新不触发。正式发布仍须通过测试、全部平台构建和附件完整性检查。重复发布请使用新 tag，避免覆盖旧包。Android 发布需要在仓库配置原有的四个签名 secrets；覆盖旧安装需要使用相同签名。
 
-一次工作流的各平台共用同一份 `build_metadata.json`，注入打包日期、内部构建号，公开版本号仍为 2.9.9。构建号为 `12000000 + GITHUB_RUN_NUMBER × 100 + GITHUB_RUN_ATTEMPT`，后续运行递增，同一次运行重试也有独立编号。生成时会检查 Android ABI 编码范围；不要发布比最新已发布运行更早的运行重试产物。
+一次工作流的各平台共用同一份 `build_metadata.json`，注入打包日期、内部构建号，公开版本号仍为 2.9.9。两种发布流程使用同一编号器：构建号为 `max(12000000 + GITHUB_RUN_NUMBER × 100 + GITHUB_RUN_ATTEMPT, 仓库已有构建号 + 1)`，后续运行递增，同一次运行重试也有独立编号。生成时会检查 Android ABI 编码范围；不要发布比最新已发布运行更早的运行重试产物。
 
 生成的 `versions.json` 随安装包附在草稿 Release 中。确认附件齐全后发布为最新正式 Release，客户端从 `releases/latest/download/versions.json` 检查版本和构建号；同版本的新构建也可提示更新。下载使用 manifest 的 `release_tag`，与包文件名保持一致。未发布的草稿不会触发客户端更新。根目录旧的 `versions.json` 不再作为在线更新依据。
 
@@ -52,3 +52,13 @@ flutter build apk --dart-define-from-file=build_metadata.json --build-name=2.9.9
 本地元数据脚本会更新 versions.json；这些生成文件无需提交。源码中的 pubspec 版本保持不变。
 
 验证：`python -m unittest discover -s scripts -p 'test_*.py'`；`flutter test test/source_refresh_test.dart test/build_info_test.dart`。
+
+## 临时配对（本地待发布修复）
+
+订阅推送及 TV 远程配置推送统一使用配对服务。打开对应页面，在目标设备查看 6 位码；网页扫码打开后输入配对码再推送。手机 App 扫描订阅二维码后也会要求输入目标设备配对码，配对后支持双向同步。
+
+配对码有效期 5 分钟，5 次错误后限流 30 秒；会话凭证绑定连接 IP，最长 30 分钟，关页立即失效。配对码和会话凭证不嵌入二维码、不写入偏好设置，也不输出到请求日志。旧版不带凭证的请求不再兼容，需要更新客户端。
+
+服务限制请求大小和读取时长；格式错误不会终止监听。8828/9928 被占用时使用动态端口，以页面显示的二维码地址为准。网络选择支持 10.*、172.16–31.* 和 192.168.*。
+
+发布编号器在 CI 中读取 Release 列表（包括非 Latest 和草稿），查询失败则停止发布。Windows 和多平台流程共用 `publish-${{ github.repository }}` 并发组，避免同时领取编号；临时本地包不用于正式更新排序。

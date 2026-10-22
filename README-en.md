@@ -10,6 +10,17 @@ This fork is based on [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/ea
 
 > This project is primarily for personal use and is maintained with **Codex assistance**. **Only Windows 11 has been runtime-tested.** Other platforms have automated build packages but have not been runtime-tested on their target systems or devices; compatibility and availability are not guaranteed.
 
+## Fixes in this release
+
+- Playback requests and delayed retries are isolated; playlist refresh restores stations by identity and retains an unchanged stream.
+- Stable subscription IDs retain caches and update times across metadata edits. URL edits preserve manually entered title and User-Agent fields.
+- Cached startup loads immediately and refreshes in the background. Network sync preserves local file subscriptions.
+- Both subscription push and TV remote-configuration push require a six-digit temporary pairing code displayed on the target device. Codes expire after five minutes; five failed attempts trigger a 30-second cooldown.
+- Sessions expire after 30 minutes or immediately when the receiving page closes. Both mobile-sync peers need the updated protocol; old unauthenticated clients are rejected.
+- Windows-only and multi-platform publishing share a monotonic numbering policy and a serialized release queue.
+
+Automated tests do not replace two-device or cross-platform runtime validation. Windows 11 remains the only runtime-tested system.
+
 ## Changes in this revision
 
 - Group browsing in the standard Windows channel list does not switch playback. Click a channel to play it; reopening the list returns to the playing channel. The dedicated TV remote list retains its existing behavior.

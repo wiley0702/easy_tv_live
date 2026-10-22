@@ -1,7 +1,7 @@
-import 'dart:convert';
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'dart:io';
 
-import 'package:easy_tv_live/tv/html_string.dart';
 import 'package:easy_tv_live/util/date_util.dart';
 import 'package:easy_tv_live/util/device_sync_util.dart';
 import 'package:easy_tv_live/util/http_util.dart';
@@ -19,13 +19,19 @@ import 'package:sp_util/sp_util.dart';
 import '../entity/sub_scribe_model.dart';
 import '../generated/l10n.dart';
 import '../util/env_util.dart';
+import '../util/pairing_session.dart';
+import '../util/lan_push_server.dart';
+import '../util/source_link.dart';
+import '../util/sync_payload.dart';
 import '../widget/source_editor_dialog.dart';
+import '../widget/pairing_code_dialog.dart';
 
 class SubScribePage extends StatefulWidget {
   final bool isTV;
   final String? remoteIp;
+  final int remotePort;
 
-  const SubScribePage({super.key, this.isTV = false, this.remoteIp});
+  const SubScribePage({super.key, this.isTV = false, this.remoteIp, this.remotePort = 8828});
 
   @override
   State<SubScribePage> createState() => _SubScribePageState();
@@ -36,10 +42,13 @@ class _SubScribePageState extends State<SubScribePage> {
 
   List<SubScribeModel> _m3uList = <SubScribeModel>[];
 
-  HttpServer? _server;
+  LanPushServer? _server;
+  final _pairing = PairingSession();
+  Timer? _pairingTimer;
+  String? _remoteToken;
+  late int _remotePort = widget.remotePort;
 
   String? _address;
-  String? _ip;
   late String? _remoteIP = widget.remoteIp;
   final _port = 8828;
 
@@ -49,21 +58,50 @@ class _SubScribePageState extends State<SubScribePage> {
   void initState() {
     super.initState();
     _localNet();
+    _pairingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
+    });
     _getData();
     _pasteClipboard();
     _addLifecycleListen();
   }
 
-  _bindRemoteIP() async {
+  Options get _remoteOptions => Options(headers: {'X-EasyTV-Token': _remoteToken});
+
+  Future<void> _bindRemoteIP() async {
     if (EnvUtil.isTV() || _remoteIP == null || _remoteIP == '') return;
-    final response = await HttpUtil().postRequest('http://$_remoteIP:$_port/ip', data: {'ip': _ip});
-    if (response != null) {
-      EasyLoading.showToast('设备已连接');
-    } else {
+    final code = await showDialog<String>(context: context, builder: (_) => const PairingCodeDialog());
+    if (!mounted) return;
+    if (code == null) {
+      setState(() => _remoteIP = null);
+      return;
+    }
+    final target = _remoteIP!;
+    final response = await HttpUtil().postRequest('http://$target:$_remotePort/pair', data: {'code': code});
+    if (!mounted) return;
+    if (response is! Map || response['token'] is! String || !RegExp(r'^[a-f0-9]{64}$').hasMatch(response['token'])) {
+      setState(() => _remoteIP = null);
+      EasyLoading.showToast('配对失败，请重新扫码并核对临时配对码');
+      return;
+    }
+    _remoteToken = response['token'];
+    final callbackToken = _pairing.issueToken(target);
+    final bound = await HttpUtil().postRequest(
+      'http://$target:$_remotePort/ip',
+      data: {'port': _server!.port, 'callbackToken': callbackToken},
+      options: _remoteOptions,
+    );
+    if (!mounted) return;
+    if (bound == null) {
+      _pairing.revokePeer(target);
       setState(() {
         _remoteIP = null;
+        _remoteToken = null;
       });
-      EasyLoading.showToast('连接失败');
+      EasyLoading.showToast('设备连接失败');
+    } else {
+      setState(() {});
+      EasyLoading.showToast('设备已配对');
     }
   }
 
@@ -82,6 +120,7 @@ class _SubScribePageState extends State<SubScribePage> {
   _pasteClipboard() async {
     if (EnvUtil.isTV()) return;
     final clipData = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
     final clipText = clipData?.text;
     if (clipText != null && clipText.startsWith('http') && !clipText.endsWith('.json')) {
       final res = await showDialog<bool>(
@@ -116,106 +155,66 @@ class _SubScribePageState extends State<SubScribePage> {
     }
   }
 
-  _localNet() async {
-    _ip = await RemoteUtil.getCurrentIP();
-    if (_ip == null || _ip == '') {
-      EasyLoading.showToast('无法获取本机IP');
-      return;
+  Future<void> _localNet() async {
+    try {
+      final ip = await RemoteUtil.getCurrentIP();
+      if (!mounted) return;
+      if (ip == null || ip.isEmpty) {
+        EasyLoading.showToast('无法获取本机IP，仍可手动添加订阅源');
+        return;
+      }
+      final server = LanPushServer(_pairing, _handlePush);
+      _server = server;
+      await server.start(ip, port: _port);
+      if (!mounted) {
+        await server.close();
+        return;
+      }
+      setState(() {
+        _address = 'http://$ip:${server.port}';
+      });
+      await _bindRemoteIP();
+    } catch (_) {
+      if (mounted) EasyLoading.showToast('局域网推送启动失败，仍可手动添加订阅源');
     }
-    await _bindRemoteIP();
-    _server = await HttpServer.bind(_ip, _port);
-    _address = 'http://$_ip:$_port';
-    setState(() {});
-    await for (HttpRequest request in _server!) {
-      if (request.method == 'GET') {
-        request.response
-          ..headers.contentType = ContentType.html
-          ..write(getHtmlString(_address!))
-          ..close();
-      } else if (request.method == 'POST') {
-        String content = await utf8.decoder.bind(request).join();
-        Map<String, dynamic> data = jsonDecode(content);
-        switch (request.uri.path) {
-          case '/':
-            _handleRootPost(request, data);
-            break;
-          case '/sync':
-            _handleSyncPost(request, data);
-            break;
-          case '/ip':
-            _handleIpPost(request, data);
-            break;
-          case '/exit':
-            _handleIpExitPost();
-            request.response
-              ..statusCode = HttpStatus.ok
-              ..headers.contentType = ContentType.json
-              ..write(json.encode({'msg': 'exit success!!!'}))
-              ..close();
-            break;
-          default:
-            request.response
-              ..statusCode = HttpStatus.notFound
-              ..write('Not found')
-              ..close();
+  }
+
+  Future<Map<String, dynamic>> _handlePush(String path, Map<String, dynamic> data, InternetAddress peer) async {
+    if (!mounted) throw StateError('Page closed');
+    switch (path) {
+      case '/':
+        final link = data['url'];
+        if (link is! String || !SourceLink.isValidSubscription(link)) throw const FormatException('Invalid URL');
+        await _pareUrl(link);
+        return {'message': '订阅源已接收'};
+      case '/sync':
+        final validated = SyncPayload.validate(data);
+        await DeviceSyncUtil.applyAllSettings(context, validated);
+        await _getData();
+        return {'message': '同步成功'};
+      case '/ip':
+        final port = data['port'];
+        final token = data['callbackToken'];
+        if (port is! int || port < 1 || port > 65535 || token is! String || !RegExp(r'^[a-f0-9]{64}$').hasMatch(token)) {
+          throw const FormatException('Invalid peer');
         }
-      } else {
-        request.response
-          ..statusCode = HttpStatus.methodNotAllowed
-          ..write('Unsupported request: ${request.method}. Only POST requests are allowed.')
-          ..close();
-      }
+        setState(() {
+          _remoteIP = peer.address;
+          _remotePort = port;
+          _remoteToken = token;
+        });
+        return {'message': '设备已配对'};
+      case '/exit':
+        if (_remoteIP == peer.address)
+          setState(() {
+            _remoteIP = null;
+            _remoteToken = null;
+          });
+        _pairing.revokePeer(peer.address);
+        return {'message': '连接已断开'};
+      default:
+        throw const FormatException('Unknown request');
     }
-  }
-
-  _handleRootPost(HttpRequest request, Map<String, dynamic> data) async {
-    String rMsg = S.current.tvParseParma;
-    if (data.containsKey('url')) {
-      final url = data['url'] as String?;
-      if (url == '' || url == null || !url.startsWith('http')) {
-        EasyLoading.showError(S.current.tvParsePushError);
-        rMsg = S.current.tvParsePushError;
-      } else {
-        rMsg = S.current.tvParseSuccess;
-        _pareUrl(url);
-      }
-    } else {
-      LogUtil.v('Missing parameters');
-    }
-
-    final responseData = {'message': rMsg};
-
-    request.response
-      ..statusCode = HttpStatus.ok
-      ..headers.contentType = ContentType.json
-      ..write(json.encode(responseData))
-      ..close();
-  }
-
-  _handleSyncPost(HttpRequest request, Map<String, dynamic> data) async {
-    request.response
-      ..statusCode = HttpStatus.ok
-      ..headers.contentType = ContentType.json
-      ..write(json.encode({'msg': '同步成功'}))
-      ..close();
-    await DeviceSyncUtil.applyAllSettings(context, data);
-    _getData();
-  }
-
-  _handleIpPost(HttpRequest request, Map<String, dynamic> data) async {
-    _remoteIP = data['ip'] as String?;
-    setState(() {});
-    request.response
-      ..statusCode = HttpStatus.ok
-      ..headers.contentType = ContentType.json
-      ..write(json.encode({'msg': 'bind Ip success'}))
-      ..close();
-  }
-
-  _handleIpExitPost() {
-    _remoteIP = null;
-    setState(() {});
-    EasyLoading.showToast('连接已断开');
   }
 
   _getData() async {
@@ -228,10 +227,12 @@ class _SubScribePageState extends State<SubScribePage> {
 
   @override
   void dispose() {
-    if (_remoteIP != null) HttpUtil().postRequest('http://$_remoteIP:$_port/exit', data: {'ip': _ip}, isShowLoading: false);
+    if (_remoteIP != null) unawaited(HttpUtil().postRequest('http://$_remoteIP:$_remotePort/exit', data: {}, options: _remoteOptions, isShowLoading: false));
+    _pairingTimer?.cancel();
+    _pairing.close();
     _appLifecycleListener?.dispose();
     _scrollController.dispose();
-    _server?.close(force: true);
+    _server?.close();
     super.dispose();
   }
 
@@ -251,6 +252,17 @@ class _SubScribePageState extends State<SubScribePage> {
       ),
       body: Column(
         children: [
+          if (_address != null)
+            ListTile(
+              title: Text('临时配对码：${_pairing.code}（5分钟有效）'),
+              subtitle: const Text('扫码后需输入此码；关闭此页后配对会话失效'),
+              trailing: TextButton(
+                onPressed: () => setState(() {
+                  _pairing.renew();
+                }),
+                child: const Text('换一个码'),
+              ),
+            ),
           if (_m3uList.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('暂无订阅源，请添加网络源或本地文件')),
           if ((Platform.isAndroid || Platform.isIOS) && !widget.isTV && _remoteIP != null)
             Container(
@@ -292,13 +304,13 @@ class _SubScribePageState extends State<SubScribePage> {
                                 model.selected = true;
                                 await SpUtil.remove('m3u_cache');
                                 await M3uUtil.saveLocalData(_m3uList);
-                                setState(() {});
+                                if (mounted) setState(() {});
                               }
                             },
                             onEdit: (val) async {
                               model.link = val;
                               await M3uUtil.saveLocalData(_m3uList);
-                              setState(() {});
+                              if (mounted) setState(() {});
                             },
                           );
                         },
@@ -399,6 +411,7 @@ class _SubScribePageState extends State<SubScribePage> {
       );
       _m3uList.add(sub);
       await M3uUtil.saveLocalData(_m3uList);
+      if (!mounted) return;
       setState(() {
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_scrollController.positions.isNotEmpty) {
@@ -426,7 +439,7 @@ class _SubScribePageState extends State<SubScribePage> {
       EasyLoading.showToast(S.current.addRepeat);
       return;
     }
-    if (res.startsWith('http') && hasIndex == -1) {
+    if (SourceLink.isValidSubscription(res) && hasIndex == -1) {
       LogUtil.v('添加：$res');
       final sub = SubScribeModel(
         time: DateUtil.formatDate(DateTime.now(), format: DateFormats.full),
@@ -435,6 +448,7 @@ class _SubScribePageState extends State<SubScribePage> {
       );
       _m3uList.add(sub);
       await M3uUtil.saveLocalData(_m3uList);
+      if (!mounted) return;
       setState(() {
         Future.delayed(const Duration(milliseconds: 300), () {
           if (_scrollController.positions.isNotEmpty) {
@@ -492,6 +506,10 @@ class _SubScribePageState extends State<SubScribePage> {
   }
 
   _syncData(int type) async {
+    if (_remoteIP == null || _remoteToken == null) {
+      EasyLoading.showToast('请先扫码配对');
+      return;
+    }
     EasyLoading.show(status: '开始同步');
     Map<String, dynamic> params = switch (type) {
       0 => await DeviceSyncUtil.syncAllSettings(context),
@@ -500,10 +518,21 @@ class _SubScribePageState extends State<SubScribePage> {
       3 => await DeviceSyncUtil.syncPrettify(context),
       _ => {},
     };
-    final response = await HttpUtil().postRequest('http://$_remoteIP:$_port/sync', data: params, isShowLoading: false);
+    if (!mounted || _remoteIP == null || _remoteToken == null) {
+      EasyLoading.dismiss();
+      return;
+    }
+    final response = await HttpUtil().postRequest('http://$_remoteIP:$_remotePort/sync', data: params, options: _remoteOptions, isShowLoading: false);
     if (response != null) {
       EasyLoading.showSuccess('同步成功');
     } else {
+      if (mounted) {
+        if (_remoteIP != null) _pairing.revokePeer(_remoteIP!);
+        setState(() {
+          _remoteIP = null;
+          _remoteToken = null;
+        });
+      }
       EasyLoading.showToast('同步失败');
     }
   }

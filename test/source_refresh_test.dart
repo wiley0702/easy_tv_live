@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:easy_tv_live/entity/sub_scribe_model.dart';
 import 'package:easy_tv_live/generated/l10n.dart';
 import 'package:easy_tv_live/util/m3u_util.dart';
+import 'package:easy_tv_live/util/source_link.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -169,6 +171,75 @@ void main() {
         await server.close(force: true);
       }
     }, _RealHttpOverrides());
+  });
+  test('legacy caches migrate to stable ID and survive metadata-only edits', () async {
+    const link = 'https://example.com/live?tl=Old&ua=Agent';
+    final legacy = base64Url.encode(utf8.encode(link));
+    await SpUtil.putObjectList('local_m3u', [
+      {'link': link, 'selected': true},
+    ]);
+    await SpUtil.putString('source_cache_$legacy', 'A,http://example.com/a');
+    await SpUtil.putString('source_updated_$legacy', '2026-10-22 10:00:00');
+    final source = (await M3uUtil.getLocalData()).single;
+    final id = source.id;
+    expect(M3uUtil.lastRefreshTime(link), '2026-10-22 10:00:00');
+    source.link = SourceLink.configure(link, 'New', 'Changed Agent');
+    await M3uUtil.saveLocalData([source]);
+    expect((await M3uUtil.getLocalData()).single.id, id);
+    expect(M3uUtil.lastRefreshTime(source.link!), '2026-10-22 10:00:00');
+    final key = base64Url.encode(utf8.encode(id));
+    expect(SpUtil.getString('source_cache_$key'), 'A,http://example.com/a');
+    source.link = 'https://other.example.com/live';
+    await M3uUtil.saveLocalData([source]);
+    expect(M3uUtil.lastRefreshTime(source.link!), anyOf(isNull, isEmpty));
+    expect(SpUtil.getString('source_cache_$key'), anyOf(isNull, isEmpty));
+  });
+
+  test('cached startup returns before network completes and refreshes in background', () async {
+    await HttpOverrides.runWithHttpOverrides(() async {
+      final requested = Completer<void>();
+      final respond = Completer<void>();
+      final refreshed = Completer<void>();
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final source = SubScribeModel(link: 'http://127.0.0.1:${server.port}/cached.txt', selected: true);
+      await M3uUtil.saveLocalData([source]);
+      await SpUtil.putString('source_cache_${base64Url.encode(utf8.encode(source.id))}', 'Cached,http://example.com/cached');
+      void onRefresh() {
+        if (!refreshed.isCompleted) refreshed.complete();
+      }
+
+      M3uUtil.refreshedPlaylist.addListener(onRefresh);
+      server.listen((request) async {
+        if (!requested.isCompleted) requested.complete();
+        await respond.future;
+        request.response.write('Fresh,http://example.com/fresh');
+        await request.response.close();
+      });
+      try {
+        final result = await M3uUtil.getDefaultM3uData().timeout(const Duration(seconds: 2));
+        expect(result!.playList!.single.channel!.single.title, 'Cached');
+        await requested.future.timeout(const Duration(seconds: 10));
+        respond.complete();
+        await refreshed.future.timeout(const Duration(seconds: 10));
+        expect(M3uUtil.serialNumMap['1']!.title, 'Fresh');
+      } finally {
+        if (!respond.isCompleted) respond.complete();
+        M3uUtil.refreshedPlaylist.removeListener(onRefresh);
+        await server.close(force: true);
+      }
+    }, _RealHttpOverrides());
+  });
+  test('network sync preserves local files and clears removed network playback', () async {
+    final local = SubScribeModel(link: '${directory.path}/local.txt', local: true);
+    final network = SubScribeModel(link: 'https://example.com/network', selected: true);
+    await M3uUtil.saveLocalData([local, network]);
+    M3uUtil.currentPlayChannelLink = network.link;
+    await M3uUtil.replaceNetworkSources([]);
+    final remaining = await M3uUtil.getLocalData();
+    expect(remaining.single.id, local.id);
+    expect(remaining.single.selected, isTrue);
+    expect(M3uUtil.currentPlayChannelLink, isNull);
+    expect(M3uUtil.refreshedPlaylist.value!.playList, isEmpty);
   });
 }
 

@@ -3,15 +3,17 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
+from urllib.request import Request, urlopen
 
 
-def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1):
+def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1, minimum_build=0):
     local = now.astimezone(timezone(timedelta(hours=8)))
     # Preserve room for Flutter's per-ABI offsets. Attempts of a run
     # get unique codes; a subsequent workflow run has a higher code.
     if not 1 <= run_attempt < 100:
         raise ValueError('Run attempt must be between 1 and 99')
-    number = 12000000 + run_number * 100 + run_attempt
+    number = max(12000000 + run_number * 100 + run_attempt, minimum_build + 1)
     if not 10260922 < number < 100000000:
         raise ValueError('Build number is outside the supported Android range')
     tag = ref_name if ref_type == 'tag' else f'2.9.9-{local:%Y%m%d}-{number}'
@@ -23,14 +25,36 @@ def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1):
         'latest_build': number,
         'build_date': local.strftime('%Y-%m-%d'),
         'release_tag': tag,
-        'update_log': ['切换分组仅浏览，点击频道才换台（Windows 常用界面）', '逐源更新、删除及标题和 User-Agent 编辑', '仅 Windows 11 做过运行验证，其他平台未实机验证'],
+        'update_log': ['修复换台竞态及刷新后频道定位', '局域网推送与同步增加临时配对码', '修复源编辑和缓存，启动优先使用缓存', '仅 Windows 11 做过运行验证；双设备配对及其他平台未实机验证'],
     }
+
+
+def published_build_floor():
+    """Include non-Latest and draft releases; fail closed on API errors in CI."""
+    if os.getenv('GITHUB_ACTIONS') != 'true':
+        return 0
+    repository = os.environ['GITHUB_REPOSITORY']
+    token = os.environ['GH_TOKEN']
+    floor = 0
+    page = 1
+    while True:
+        request = Request(f'https://api.github.com/repos/{repository}/releases?per_page=100&page={page}',
+                          headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'})
+        with urlopen(request, timeout=30) as response:
+            releases = json.load(response)
+        for release in releases:
+            match = re.fullmatch(r'2\.9\.9-\d{8}-(\d+)', release['tag_name'])
+            if match:
+                floor = max(floor, int(match.group(1)))
+        if len(releases) < 100:
+            return floor
+        page += 1
 
 
 def main():
     defines, manifest = generate(datetime.now(timezone.utc),
         os.getenv('GITHUB_REF_TYPE', ''), os.getenv('GITHUB_REF_NAME', ''),
-        int(os.getenv('GITHUB_RUN_NUMBER', '1')), int(os.getenv('GITHUB_RUN_ATTEMPT', '1')))
+        int(os.getenv('GITHUB_RUN_NUMBER', '1')), int(os.getenv('GITHUB_RUN_ATTEMPT', '1')), published_build_floor())
     Path('build_metadata.json').write_text(json.dumps(defines, indent=2), encoding='utf-8')
     Path('versions.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     if output := os.getenv('GITHUB_OUTPUT'):

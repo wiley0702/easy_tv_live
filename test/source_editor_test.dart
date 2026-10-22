@@ -40,8 +40,11 @@ void main() {
     expect(find.text('Agent/1'), findsOneWidget);
     await tester.enterText(find.byKey(const Key('source-title')), 'New');
     await tester.enterText(find.byKey(const Key('source-ua')), '');
+    await tester.enterText(find.byKey(const Key('source-url')), 'https://example.com/new-address?token=y&tl=Ignored&ua=Ignored');
+    await tester.pump();
+    expect(find.text('New'), findsOneWidget);
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
-    expect(saved, 'https://example.com/a?token=x&tl=New');
+    expect(saved, 'https://example.com/new-address?token=y&tl=New');
   });
 }

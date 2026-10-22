@@ -15,6 +15,8 @@ class _SourceEditorDialogState extends State<SourceEditorDialog> {
   late final _url = TextEditingController(text: widget.initialLink);
   late final _title = TextEditingController(text: SourceLink.parameter(widget.initialLink, 'tl') ?? '');
   late final _ua = TextEditingController(text: SourceLink.parameter(widget.initialLink, 'ua') ?? '');
+  bool _titleEdited = false;
+  bool _uaEdited = false;
 
   @override
   void dispose() {
@@ -41,8 +43,8 @@ class _SourceEditorDialogState extends State<SourceEditorDialog> {
                 autofocus: true,
                 decoration: const InputDecoration(labelText: '订阅地址', hintText: 'https://example.com/live.m3u'),
                 onChanged: (value) {
-                  _title.text = SourceLink.parameter(value.trim(), 'tl') ?? '';
-                  _ua.text = SourceLink.parameter(value.trim(), 'ua') ?? '';
+                  if (!_titleEdited) _title.text = SourceLink.parameter(value.trim(), 'tl') ?? '';
+                  if (!_uaEdited) _ua.text = SourceLink.parameter(value.trim(), 'ua') ?? '';
                 },
                 validator: (value) {
                   if (!SourceLink.isValid(value?.trim() ?? '')) return '请输入有效的 HTTP 或 HTTPS 地址';
@@ -55,12 +57,14 @@ class _SourceEditorDialogState extends State<SourceEditorDialog> {
               TextFormField(
                 key: const Key('source-title'),
                 controller: _title,
+                onChanged: (_) => _titleEdited = true,
                 decoration: const InputDecoration(labelText: '显示标题（选填）', helperText: '留空时使用地址中的文件名'),
               ),
               const SizedBox(height: 12),
               TextFormField(
                 key: const Key('source-ua'),
                 controller: _ua,
+                onChanged: (_) => _uaEdited = true,
                 decoration: const InputDecoration(labelText: 'User-Agent（选填）', helperText: '用于视频播放；留空时沿用源文件提示或播放器默认值'),
                 validator: (value) => (value ?? '').contains(RegExp(r'[\r\n]')) ? 'User-Agent 不能包含换行' : null,
               ),

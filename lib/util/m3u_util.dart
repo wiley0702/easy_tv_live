@@ -12,6 +12,7 @@ import '../entity/sub_scribe_model.dart';
 import '../generated/l10n.dart';
 import '../tv/tv_setting_page.dart';
 import 'log_util.dart';
+import 'source_link.dart';
 
 class M3uUtil {
   M3uUtil._();
@@ -26,7 +27,18 @@ class M3uUtil {
   static final refreshedPlaylist = ValueNotifier<PlayChannelListModel?>(null);
   static final Map<String, int> _requestSerials = {};
 
-  static String _sourceKey(String link) => base64Url.encode(utf8.encode(link));
+  static List<Map<String, dynamic>> _storedRows() =>
+      SpUtil.getObjList('local_m3u', (value) => Map<String, dynamic>.from(value), defValue: <Map<String, dynamic>>[]) ?? [];
+
+  static String _encodedKey(String value) => base64Url.encode(utf8.encode(value));
+  static String _sourceKey(String link) {
+    for (final row in _storedRows()) {
+      if (row['link'] == link && row['id'] is String) return _encodedKey(row['id']);
+    }
+    return _encodedKey(link);
+  }
+
+  static Future<List<SubScribeModel>>? _readingLocalData;
 
   static String? lastRefreshTime(String link) => SpUtil.getString('source_updated_${_sourceKey(link)}');
 
@@ -53,6 +65,27 @@ class M3uUtil {
     final cacheKey = 'source_cache_$key';
     final ua = link.startsWith('http') ? Uri.parse(link).queryParameters['ua'] ?? '' : '';
     PlayChannelListModel? parsed;
+    if (!forceRefresh) {
+      final cached = SpUtil.getString(cacheKey, defValue: '') ?? '';
+      if (cached.isNotEmpty) {
+        try {
+          parsed = await _validatedPlaylist(cached, ua);
+        } catch (_) {
+          /* Fetch a replacement below. */
+        }
+        if (parsed != null && await _isCurrentRequest(request, link, activate)) {
+          if (activate) _activatePlaylist(parsed, link, false);
+          unawaited(
+            Future<void>.delayed(Duration.zero, () async {
+              if (await _isCurrentRequest(request, link, activate)) {
+                await _loadSource(source, forceRefresh: true, activate: activate);
+              }
+            }),
+          );
+          return parsed;
+        }
+      }
+    }
     try {
       final String? data;
       if (source.local == true) {
@@ -88,6 +121,11 @@ class M3uUtil {
     // A completed request must not reactivate a subscription the user left.
     if (!await _isCurrentRequest(request, link, activate)) return null;
     if (!activate) return parsed;
+    _activatePlaylist(parsed, link, forceRefresh);
+    return parsed;
+  }
+
+  static void _activatePlaylist(PlayChannelListModel parsed, String link, bool notify) {
     currentPlayChannelLink = link;
     _serialNumMap.clear();
     int serial = 1;
@@ -102,8 +140,7 @@ class M3uUtil {
         serial++;
       }
     }
-    if (forceRefresh) refreshedPlaylist.value = parsed;
-    return parsed;
+    if (notify) refreshedPlaylist.value = parsed;
   }
 
   static Future<bool> _isCurrentRequest(int request, String link, bool activate) async {
@@ -115,13 +152,15 @@ class M3uUtil {
 
   static Future<void> deleteSource(String link) async {
     final models = await getLocalData();
-    final wasActive = currentPlayChannelLink == link ||
+    final wasActive =
+        currentPlayChannelLink == link ||
         (models.isNotEmpty && models.firstWhere((source) => source.selected == true, orElse: () => models.first).link == link);
     _requestSerials[link] = (_requestSerials[link] ?? 0) + 1;
+    final key = _sourceKey(link);
     models.removeWhere((source) => source.link == link);
     await saveLocalData(models);
-    await SpUtil.remove('source_cache_${_sourceKey(link)}');
-    await SpUtil.remove('source_updated_${_sourceKey(link)}');
+    await SpUtil.remove('source_cache_$key');
+    await SpUtil.remove('source_updated_$key');
     if (wasActive) {
       currentPlayChannelLink = null;
       _serialNumMap.clear();
@@ -146,24 +185,99 @@ class M3uUtil {
     return currentPlayChannelLink != defaultModel.link;
   }
 
-  // 获取本地m3u数据
-  static Future<List<SubScribeModel>> getLocalData() async {
-    List<SubScribeModel> m3uList = SpUtil.getObjList('local_m3u', (v) => SubScribeModel.fromJson(v), defValue: <SubScribeModel>[])!;
-    // Migrate the previously injected built-in source without touching user sources.
-    if (m3uList.any((source) => source.link == 'default')) {
-      m3uList.removeWhere((source) => source.link == 'default');
-      await saveLocalData(m3uList);
-    }
-    return m3uList;
+  static Future<List<SubScribeModel>> getLocalData() {
+    if (_readingLocalData != null) return _readingLocalData!;
+    final future = _readLocalData();
+    _readingLocalData = future;
+    return future.whenComplete(() => _readingLocalData = null);
   }
 
-  // 保存本地m3u数据
-  static Future<bool> saveLocalData(List<SubScribeModel> models) async {
-    if (models.isNotEmpty && !models.any((source) => source.selected == true)) {
-      models.first.selected = true;
+  static Future<List<SubScribeModel>> _readLocalData() async {
+    final rows = _storedRows();
+    final models = <SubScribeModel>[];
+    final ids = <String>{};
+    var changed = false;
+    for (final row in rows) {
+      if (row['link'] == 'default') {
+        changed = true;
+        continue;
+      }
+      final source = SubScribeModel.fromJson(row);
+      if (row['id'] == null || !ids.add(source.id)) {
+        source.id = SubScribeModel.newId();
+        ids.add(source.id);
+        changed = true;
+        final oldKey = _encodedKey(source.link!);
+        final newKey = _encodedKey(source.id);
+        for (final prefix in ['source_cache_', 'source_updated_']) {
+          final value = SpUtil.getString('$prefix$oldKey');
+          if (value != null && value.isNotEmpty) await SpUtil.putString('$prefix$newKey', value);
+        }
+      }
+      models.add(source);
     }
-    final res = await SpUtil.putObjectList('local_m3u', models.map((e) => e.toJson()).toList());
+    if (changed) await saveLocalData(models);
+    return models;
+  }
+
+  static Future<bool> saveLocalData(List<SubScribeModel> models) async {
+    final previous = _storedRows();
+    final ids = <String>{};
+    for (final source in models) {
+      if (!previous.any((row) => row['id'] == source.id)) {
+        final sameLink = previous.where((row) => row['link'] == source.link && row['id'] is String);
+        if (sameLink.isNotEmpty) source.id = sameLink.first['id'];
+      }
+      if (!ids.add(source.id)) {
+        source.id = SubScribeModel.newId();
+        ids.add(source.id);
+      }
+      final before = previous.where((row) => row['id'] == source.id);
+      if (before.isEmpty || before.first['link'] == source.link) continue;
+      final oldLink = before.first['link'] as String;
+      final sameAddress = source.local == true ? oldLink == source.link : SourceLink.configure(oldLink, '', '') == SourceLink.configure(source.link!, '', '');
+      _requestSerials[oldLink] = (_requestSerials[oldLink] ?? 0) + 1;
+      if (currentPlayChannelLink == oldLink && (!sameAddress || SourceLink.parameter(oldLink, 'ua') != SourceLink.parameter(source.link!, 'ua'))) {
+        await SpUtil.remove('m3u_cache');
+      }
+      if (!sameAddress) {
+        for (final prefix in ['source_cache_', 'source_updated_']) {
+          await SpUtil.remove('$prefix${_encodedKey(source.id)}');
+        }
+      } else if (currentPlayChannelLink == oldLink && SourceLink.parameter(oldLink, 'ua') == SourceLink.parameter(source.link!, 'ua')) {
+        currentPlayChannelLink = source.link;
+      }
+    }
+    var selected = false;
+    for (final source in models) {
+      if (source.selected == true && !selected) {
+        selected = true;
+      } else {
+        source.selected = false;
+      }
+    }
+    if (models.isNotEmpty && !selected) models.first.selected = true;
+    final res = await SpUtil.putObjectList('local_m3u', models.map((source) => source.toJson()).toList());
     return res ?? false;
+  }
+
+  static Future<void> replaceNetworkSources(List<SubScribeModel> incoming) async {
+    final local = (await getLocalData()).where((source) => source.local == true).toList();
+    if (incoming.any((source) => source.selected == true)) {
+      for (final source in local) {
+        source.selected = false;
+      }
+    }
+    final models = [...local, ...incoming];
+    await saveLocalData(models);
+    await SpUtil.remove('m3u_cache');
+    final current = currentPlayChannelLink;
+    if (current != null && !models.any((source) => source.link == current)) {
+      _requestSerials[current] = (_requestSerials[current] ?? 0) + 1;
+      currentPlayChannelLink = null;
+      _serialNumMap.clear();
+      refreshedPlaylist.value = PlayChannelListModel(playList: []);
+    }
   }
 
   static bool isLiveLink(String link) {
