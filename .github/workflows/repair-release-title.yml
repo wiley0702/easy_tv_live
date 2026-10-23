@@ -1,0 +1,27 @@
+name: Repair release title
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/repair-release-title.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Correct existing release title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          title = "\u6781\u7b80TV 2.9.9-20261023-12000601\uff08\u591a\u5e73\u53f0\uff0c\u4ec5 Win11 \u8fd0\u884c\u9a8c\u8bc1\uff09"
+          Path("title.json").write_text(json.dumps({"name": title}), encoding="utf-8")
+          PY
+          gh api --method PATCH "repos/$GH_REPO/releases/421393245" --input title.json --jq '{id: .id, name: .name, html_url: .html_url}'
