@@ -17,7 +17,7 @@ class ReleaseAssetsTest(unittest.TestCase):
         source.mkdir(parents=True)
         Path('release/versions.json').write_text(json.dumps({'release_tag': 'test'}))
         for suffix in ['.apk', '-tv.apk', '.ipa', '-apple-tv.ipa', '-macos.zip',
-                       '-windows.zip', '-linux-x64.tar.gz', '-linux-amd64.deb',
+                       '-windows.zip', '-windows-portable.zip', '-linux-x64.tar.gz', '-linux-amd64.deb',
                        '-linux-x86_64.rpm', '-linux-x86_64.AppImage']:
             (source / ('easyTV-test' + suffix)).write_bytes(b'x' * 1024)
 
@@ -28,7 +28,7 @@ class ReleaseAssetsTest(unittest.TestCase):
     def test_all_platforms_are_flattened_and_checksummed(self):
         main()
         lines = Path('release-assets/SHA256SUMS').read_text().splitlines()
-        self.assertEqual(len(lines), 11)
+        self.assertEqual(len(lines), 12)
         for line in lines:
             digest, name = line.split('  ', 1)
             self.assertEqual(hashlib.sha256((Path('release-assets') / name).read_bytes()).hexdigest(), digest)

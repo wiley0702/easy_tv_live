@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'util/portable_storage.dart';
 
 import 'package:easy_tv_live/provider/theme_provider.dart';
 import 'package:easy_tv_live/setting/qr_scan_page.dart';
@@ -36,7 +37,7 @@ void main() async {
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
-      title: '极简TV',
+      title: '����TV',
     );
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
@@ -45,7 +46,21 @@ void main() async {
   }
   WakelockPlus.enable();
   LogUtil.init(isDebug: kDebugMode, tag: 'EasyTV');
-  await SpUtil.getInstance();
+  try {
+    await PortableStorage.initialize();
+    await SpUtil.getInstance();
+  } catch (error) {
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SelectableText('��Я�����޷���ȡ��д�룬�뽫����������ѹ����д��Ȩ�޵�Ŀ¼�����ԡ�\n$error'),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
   fvp.registerWith(
     options: {
       'platforms': ['android', 'ios', 'windows', 'linux', 'macos'],
@@ -64,7 +79,9 @@ void main() async {
     ),
   );
   if (Platform.isAndroid) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+    );
   }
 }
 
@@ -73,19 +90,28 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<ThemeProvider, ({String fontFamily, double textScaleFactor})>(
-      selector: (_, provider) => (fontFamily: provider.fontFamily, textScaleFactor: provider.textScaleFactor),
+    return Selector<
+      ThemeProvider,
+      ({String fontFamily, double textScaleFactor})
+    >(
+      selector: (_, provider) => (
+        fontFamily: provider.fontFamily,
+        textScaleFactor: provider.textScaleFactor,
+      ),
       builder: (context, data, child) {
         String? fontFamily = data.fontFamily;
         if (fontFamily == 'system') {
           fontFamily = null;
         }
         return MaterialApp(
-          title: '极简TV',
+          title: '����TV',
           theme: ThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.redAccent, brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.redAccent,
+              brightness: Brightness.dark,
+            ),
             scaffoldBackgroundColor: Colors.black,
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.black,
@@ -97,12 +123,17 @@ class MyApp extends StatelessWidget {
             useMaterial3: true,
           ),
           routes: {
-            RouterKeys.subScribe: (BuildContext context) => const SubScribePage(),
+            RouterKeys.subScribe: (BuildContext context) =>
+                const SubScribePage(),
             RouterKeys.setting: (BuildContext context) => const SettingPage(),
-            RouterKeys.settingFont: (BuildContext context) => const SettingFontPage(),
-            RouterKeys.settingReward: (BuildContext context) => const RewardPage(),
-            RouterKeys.settingQrScan: (BuildContext context) => const QrScanPage(),
-            RouterKeys.settingRemote: (BuildContext context) => const SettingRemote(),
+            RouterKeys.settingFont: (BuildContext context) =>
+                const SettingFontPage(),
+            RouterKeys.settingReward: (BuildContext context) =>
+                const RewardPage(),
+            RouterKeys.settingQrScan: (BuildContext context) =>
+                const QrScanPage(),
+            RouterKeys.settingRemote: (BuildContext context) =>
+                const SettingRemote(),
           },
           localizationsDelegates: const [
             S.delegate,
@@ -116,22 +147,30 @@ class MyApp extends StatelessWidget {
               return const Locale('en', 'US');
             }
             for (var supportedLocale in supportedLocales) {
-              if (supportedLocale.languageCode == locale.languageCode && supportedLocale.countryCode == locale.countryCode) {
+              if (supportedLocale.languageCode == locale.languageCode &&
+                  supportedLocale.countryCode == locale.countryCode) {
                 return supportedLocale;
               }
             }
             for (var supportedLocale in supportedLocales) {
-              if (supportedLocale.languageCode == locale.languageCode && supportedLocale.countryCode != locale.countryCode) {
+              if (supportedLocale.languageCode == locale.languageCode &&
+                  supportedLocale.countryCode != locale.countryCode) {
                 return supportedLocale;
               }
             }
             return const Locale('en', 'US');
           },
           debugShowCheckedModeBanner: false,
-          home: Platform.isWindows || Platform.isLinux ? const DragToResizeArea(child: DragToMoveArea(child: LiveHomePage())) : const LiveHomePage(),
+          home: Platform.isWindows || Platform.isLinux
+              ? const DragToResizeArea(
+                  child: DragToMoveArea(child: LiveHomePage()),
+                )
+              : const LiveHomePage(),
           builder: (context, child) {
             return MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(data.textScaleFactor)),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(data.textScaleFactor)),
               child: FlutterEasyLoading(child: child),
             );
           },

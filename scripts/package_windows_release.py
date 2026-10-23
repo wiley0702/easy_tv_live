@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-import zipfile
+from windows_archives import create_archives
 
 
 def main():
@@ -14,14 +14,10 @@ def main():
             raise ValueError(f'Missing runtime file: {name}')
     packages = Path('packages')
     packages.mkdir(exist_ok=True)
-    base = packages / f"easyTV-{metadata['release_tag']}-windows"
-    archive = Path(shutil.make_archive(str(base), 'zip', bundle))
-    with zipfile.ZipFile(archive) as stream:
-        if stream.testzip() is not None:
-            raise ValueError('Invalid ZIP')
+    archives = create_archives(bundle, packages, metadata['release_tag'])
     shutil.copy2('versions.json', packages / 'versions.json')
     sums = ''.join(f'{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}\n'
-                   for file in (archive, packages / 'versions.json'))
+                   for file in (*archives, packages / 'versions.json'))
     (packages / 'SHA256SUMS').write_text(sums, encoding='utf-8')
 
 

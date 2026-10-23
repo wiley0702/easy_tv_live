@@ -11,7 +11,7 @@ def main():
     metadata = json.loads(manifest_path.read_text(encoding='utf-8'))
     stem = f"easyTV-{metadata['release_tag']}"
     suffixes = ['.apk', '-tv.apk', '.ipa', '-apple-tv.ipa', '-macos.zip',
-                '-windows.zip', '-linux-x64.tar.gz', '-linux-amd64.deb',
+                '-windows.zip', '-windows-portable.zip', '-linux-x64.tar.gz', '-linux-amd64.deb',
                 '-linux-x86_64.rpm', '-linux-x86_64.AppImage']
     target = Path('release-assets')
     target.mkdir(exist_ok=False)

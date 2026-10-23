@@ -208,14 +208,14 @@ jobs:
 
       - name: Create Linux packages
         run: |
-          # 准备打包目录
+          # ׼�����Ŀ¼
           mkdir -p packages
           cd build/linux/x64/release/bundle
           
-          # 创建传统tar.gz包
+          # ������ͳtar.gz��
           tar -czf ../../../../../packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x64.tar.gz .
           
-          # 准备deb包目录结构
+          # ׼��deb��Ŀ¼�ṹ
           cd ../../../../../
           mkdir -p deb-package/DEBIAN
           mkdir -p deb-package/usr/bin
@@ -223,10 +223,10 @@ jobs:
           mkdir -p deb-package/usr/share/icons/hicolor/256x256/apps
           mkdir -p deb-package/usr/share/doc/easytv-live
           
-          # 复制应用文件
+          # ����Ӧ���ļ�
           cp -r build/linux/x64/release/bundle/* deb-package/usr/bin/
           
-          # 创建desktop文件
+          # ����desktop�ļ�
           cat > deb-package/usr/share/applications/easytv-live.desktop << EOF
           [Desktop Entry]
           Version=1.0
@@ -240,7 +240,7 @@ jobs:
           StartupNotify=true
           EOF
           
-          # 创建DEBIAN控制文件
+          # ����DEBIAN�����ļ�
           cat > deb-package/DEBIAN/control << EOF
           Package: easytv-live
           Version: 2.9.9-${{ needs.metadata.outputs.build_number }}
@@ -253,7 +253,7 @@ jobs:
            A modern TV live streaming application built with Flutter.
           EOF
           
-          # 创建postinst脚本
+          # ����postinst�ű�
           cat > deb-package/DEBIAN/postinst << EOF
           #!/bin/bash
           chmod +x /usr/bin/easy_tv_live
@@ -261,10 +261,10 @@ jobs:
           EOF
           chmod 755 deb-package/DEBIAN/postinst
           
-          # 构建deb包
+          # ����deb��
           dpkg-deb --build deb-package packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-amd64.deb
           
-          # 准备rpm包目录结构
+          # ׼��rpm��Ŀ¼�ṹ
           mkdir -p rpm-package/SPECS
           mkdir -p rpm-package/BUILD
           mkdir -p rpm-package/RPMS
@@ -272,11 +272,11 @@ jobs:
           mkdir -p rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/bin
           mkdir -p rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/share/applications
           
-          # 复制文件到rpm构建目录
+          # �����ļ���rpm����Ŀ¼
           cp -r build/linux/x64/release/bundle/* rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/bin/
           cp deb-package/usr/share/applications/easytv-live.desktop rpm-package/BUILDROOT/easytv-live-2.9.9-${{ needs.metadata.outputs.build_number }}.x86_64/usr/share/applications/
           
-          # 创建rpm spec文件
+          # ����rpm spec�ļ�
           cat > rpm-package/SPECS/easytv-live.spec << EOF
           Name: easytv-live
           Version: 2.9.9
@@ -303,33 +303,33 @@ jobs:
           - Release ${{ needs.metadata.outputs.release_tag }}
           EOF
           
-          # 安装rpm-build工具
+          # ��װrpm-build����
           sudo apt-get update
           sudo apt-get install -y rpm
           
-          # 构建rpm包
+          # ����rpm��
           rpmbuild --define "_topdir $(pwd)/rpm-package" -bb rpm-package/SPECS/easytv-live.spec
           cp rpm-package/RPMS/x86_64/*.rpm packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.rpm
           
-          # 创建AppImage
+          # ����AppImage
           mkdir -p AppDir/usr/bin
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           
-          # 复制应用文件
+          # ����Ӧ���ļ�
           cp -r build/linux/x64/release/bundle/* AppDir/usr/bin/
           cp deb-package/usr/share/applications/easytv-live.desktop AppDir/usr/share/applications/
-          # AppImage需要在根目录有desktop文件
+          # AppImage��Ҫ�ڸ�Ŀ¼��desktop�ļ�
           cp deb-package/usr/share/applications/easytv-live.desktop AppDir/
           
-          # 复制图标文件
+          # ����ͼ���ļ�
           if [ -f "assets/images/app_logo.png" ]; then
             cp assets/images/app_logo.png AppDir/easytv-live.png
           else
             echo "Warning: app_logo.png not found in assets/images/"
           fi
           
-          # 创建AppRun脚本
+          # ����AppRun�ű�
           cat > AppDir/AppRun << 'EOF'
           #!/bin/bash
           HERE="$(dirname "$(readlink -f "${0}")")"
@@ -338,12 +338,12 @@ jobs:
           EOF
           chmod +x AppDir/AppRun
           
-          # 安装FUSE并下载appimagetool
+          # ��װFUSE������appimagetool
           sudo apt-get install -y fuse libfuse2
           wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           
-          # 尝试使用FUSE运行，如果失败则使用提取模式
+          # ����ʹ��FUSE���У����ʧ����ʹ����ȡģʽ
           ./appimagetool AppDir packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage || \
           ./appimagetool --appimage-extract-and-run AppDir packages/easyTV-${{ needs.metadata.outputs.release_tag }}-linux-x86_64.AppImage
 
@@ -381,15 +381,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cp windows/system32/* build/windows/x64/runner/Release/
           ls -l build/windows/x64/runner/Release
-          cd build/windows/x64/runner/Release
-          7z a easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip *
+          python scripts/package_windows_release.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifact
           path: |
-            build/windows/x64/runner/Release/easyTV-${{ needs.metadata.outputs.release_tag }}-windows.zip
+            packages/*.zip
 
   create_release:
     needs: [ metadata, build_linux, build_windows, build_ios_macos, build_android ]
@@ -421,7 +421,7 @@ jobs:
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: 极简TV ${{ needs.metadata.outputs.release_tag }}（多平台，仅 Win11 运行验证）
+          name: ����TV ${{ needs.metadata.outputs.release_tag }}����ƽ̨���� Win11 ������֤��
           body_path: docs/multiplatform-release-notes.md
           draft: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           make_latest: ${{ github.ref == 'refs/heads/main' }}
