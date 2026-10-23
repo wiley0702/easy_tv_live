@@ -421,7 +421,7 @@ jobs:
         with:
           tag_name: ${{ needs.metadata.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: ����TV ${{ needs.metadata.outputs.release_tag }}����ƽ̨���� Win11 ������֤��
+          name: 极简TV ${{ needs.metadata.outputs.release_tag }}（多平台，仅 Win11 运行验证）
           body_path: docs/multiplatform-release-notes.md
           draft: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           make_latest: ${{ github.ref == 'refs/heads/main' }}
