@@ -1,7 +1,7 @@
 {
   "version": "2.9.9",
-  "date": "2026-10-22",
-  "purpose": "Publish playback, source cache and temporary LAN pairing fixes across supported platforms",
+  "date": "2026-10-23",
+  "purpose": "Publish Windows always-on-top controls, portable packages and cumulative fork differences",
   "signing": "independent-pkcs12-v1",
   "runtime_validated_os": [
     "Windows 11"

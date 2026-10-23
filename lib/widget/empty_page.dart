@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'window_pin_button.dart';
 import 'package:flutter/material.dart';
 
 import '../generated/l10n.dart';
@@ -40,6 +42,7 @@ class EmptyPage extends StatelessWidget {
                 child: const Text('       切换源       ', style: TextStyle(color: Colors.white)),
               ),
             ),
+          if (Platform.isWindows) const Padding(padding: EdgeInsets.only(top: 12), child: WindowPinButton()),
         ],
       ),
     );

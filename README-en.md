@@ -10,34 +10,27 @@ This fork is based on [aiyakuaile/easy_tv_live](https://github.com/aiyakuaile/ea
 
 > This project is primarily for personal use and is maintained with **Codex assistance**. **Only Windows 11 has been runtime-tested.** Other platforms have automated build packages but have not been runtime-tested on their target systems or devices; compatibility and availability are not guaranteed.
 
-## Fixes in this release
+## Functional differences from upstream
 
-- Playback requests and delayed retries are isolated; playlist refresh restores stations by identity and retains an unchanged stream.
-- Stable subscription IDs retain caches and update times across metadata edits. URL edits preserve manually entered title and User-Agent fields.
-- Cached startup loads immediately and refreshes in the background. Network sync preserves local file subscriptions.
-- Both subscription push and TV remote-configuration push require a six-digit temporary pairing code displayed on the target device. Codes expire after five minutes; five failed attempts trigger a 30-second cooldown.
-- Sessions expire after 30 minutes or immediately when the receiving page closes. Both mobile-sync peers need the updated protocol; old unauthenticated clients are rejected.
-- Windows-only and multi-platform publishing share a monotonic numbering policy and a serialized release queue.
+This list describes the cumulative functional differences introduced by this fork. Per-release history is available in [Releases](https://github.com/wiley0702/easy_tv_live/releases).
 
-Automated tests do not replace two-device or cross-platform runtime validation. Windows 11 remains the only runtime-tested system.
-
-## Changes in this revision
-
-- Group browsing in the standard Windows channel list does not switch playback. Click a channel to play it; reopening the list returns to the playing channel. The dedicated TV remote list retains its existing behavior.
-- No built-in default subscription. Start with an empty list and add your own sources. Legacy built-in records are removed during migration; user subscriptions are retained.
-- Every source can be deleted, including the active source, after confirmation. Deleting the active source clears its playlist; deleting the final source leaves the list empty. Removing a local subscription does not delete its file.
-- Each source has its own refresh button. Refreshing an inactive source does not switch playback. Network sources are fetched again; local files are read again.
-- Source cards show the last successful update time instead of creation time. This is the time the device fetched and parsed the source, not the source server's modification time. Failed updates preserve the existing cache and timestamp.
-- Donation entries are hidden. Desktop/TV settings open on subscriptions. QR-based subscription push remains available.
-- Add and edit dialogs provide separate URL, display title and User-Agent fields. Existing `tl` and `ua` query parameters are filled in automatically and can be changed or cleared.
-
-> This release provides Windows, Android, iOS, macOS and Linux builds. **Only Windows 11 has been runtime-tested. Other platforms have not been tested on target devices.** Read the release notes before downloading.
+- No bundled default source; users start with an empty subscription list.
+- Every source can be deleted, including the active or last source. Local files are retained.
+- Refresh sources individually and display the last successful local update time; inactive updates do not switch playback, and failures retain caches.
+- Separate title and User-Agent fields when adding or editing sources, compatible with `tl` and `ua` URL parameters. User-Agent applies to video playback requests.
+- Browsing groups in the standard Windows channel list does not change playback until a channel is clicked. The dedicated TV remote list retains its original interaction.
+- Restore the playing station by identity after refresh, retaining an unchanged stream and User-Agent; start from valid cached channels and refresh in the background.
+- Temporary six-digit pairing codes protect LAN subscription/configuration push and sync. Sync preserves local file sources on the receiver; both peers need updated fork clients.
+- Donation entries are hidden; desktop/TV settings open subscriptions first. QR source input remains available.
+- Windows always-on-top button in playback controls and the empty-channel page. Ctrl+Shift+T toggles while the app has focus; the setting resets on restart.
+- Separate Windows portable ZIP stores settings, subscriptions and channel caches in the adjacent `user_data` folder for migration.
+- Public version remains 2.9.9 with a build date displayed in the app; Android packages use this fork's independent signing certificate.
 
 ## Download and get started
 
 Published packages are available in [this fork's Releases](https://github.com/wiley0702/easy_tv_live/releases).
 
-1. On Windows, extract the entire ZIP and run `easy_tv_live.exe`. Keep the DLLs and `data` directory beside it.
+1. Windows standard builds use AppData; portable builds use the adjacent `user_data` folder. Preserve it during upgrades and close the app before copying the full folder for migration. Local source files and their paths require separate migration. Extract the entire ZIP and run `easy_tv_live.exe`. Keep the DLLs and `data` directory beside it.
 2. Open subscriptions and add a network URL or a local M3U/TXT file.
 3. Refresh the source and check its update time. Use the source selection button to change the active source.
 

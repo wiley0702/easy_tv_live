@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'widget/window_pin_button.dart';
 import 'package:easy_tv_live/util/env_util.dart';
 import 'package:easy_tv_live/util/log_util.dart';
 import 'package:easy_tv_live/util/m3u_util.dart';
@@ -45,7 +47,8 @@ class TableVideoWidget extends StatefulWidget {
   State<TableVideoWidget> createState() => _TableVideoWidgetState();
 }
 
-class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener {
+class _TableVideoWidgetState extends State<TableVideoWidget>
+    with WindowListener {
   bool _isShowMenuBar = true;
 
   bool _isShowOpView = true;
@@ -78,7 +81,7 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
   @override
   void onWindowResize() async {
     final size = await windowManager.getSize();
-    await windowManager.setAspectRatio(16/9);
+    await windowManager.setAspectRatio(16 / 9);
     if (size.width < 600) {
       if (!_isShowOpView) return;
       _isShowOpView = false;
@@ -167,23 +170,35 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                     children: [
                       AspectRatio(
                         aspectRatio: widget.aspectRatio,
-                        child: SizedBox(width: double.infinity, child: VideoPlayer(widget.controller!)),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: VideoPlayer(widget.controller!),
+                        ),
                       ),
                       if (!widget.isPlaying && !widget.drawerIsOpen)
                         GestureDetector(
                           onTap: () {
                             widget.controller?.play();
                           },
-                          child: const Icon(Icons.play_circle_outline, color: Colors.white, size: 50),
+                          child: const Icon(
+                            Icons.play_circle_outline,
+                            color: Colors.white,
+                            size: 50,
+                          ),
                         ),
-                      if (widget.isBuffering && !widget.drawerIsOpen) const SpinKitSpinningLines(color: Colors.white),
+                      if (widget.isBuffering && !widget.drawerIsOpen)
+                        const SpinKitSpinningLines(color: Colors.white),
                     ],
                   )
-                : VideoHoldBg(toastString: widget.drawerIsOpen ? '' : widget.toastString),
+                : VideoHoldBg(
+                    toastString: widget.drawerIsOpen ? '' : widget.toastString,
+                  ),
           ),
         ),
         if (_isShowOpView) ...[
-          if (widget.drawerIsOpen || (!widget.drawerIsOpen && _isShowMenuBar && widget.isLandscape)) const DatePositionWidget(),
+          if (widget.drawerIsOpen ||
+              (!widget.drawerIsOpen && _isShowMenuBar && widget.isLandscape))
+            const DatePositionWidget(),
           if (widget.isLandscape)
             Builder(
               builder: (BuildContext context) {
@@ -201,7 +216,10 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                                 onTap: () => _pushSettingPage(context),
                                 child: Tooltip(
                                   message: '进入设置',
-                                  child: SizedBox(width: 80, height: MediaQuery.of(context).size.height),
+                                  child: SizedBox(
+                                    width: 80,
+                                    height: MediaQuery.of(context).size.height,
+                                  ),
                                 ),
                               ),
                             ),
@@ -210,7 +228,10 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                                 onTap: () => _pushChannelDrawer(context),
                                 child: Tooltip(
                                   message: '打开频道列表',
-                                  child: SizedBox(width: 80, height: MediaQuery.of(context).size.height),
+                                  child: SizedBox(
+                                    width: 80,
+                                    height: MediaQuery.of(context).size.height,
+                                  ),
                                 ),
                               ),
                             ),
@@ -264,6 +285,10 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                 child: Row(
                   children: [
                     const Spacer(),
+                    if (Platform.isWindows) ...[
+                      const WindowPinButton(),
+                      const SizedBox(width: 12),
+                    ],
                     IconButton(
                       tooltip: '进入设置',
                       style: IconButton.styleFrom(
@@ -304,7 +329,10 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                         backgroundColor: Colors.black87,
                         side: const BorderSide(color: Colors.white),
                       ),
-                      icon: const Icon(Icons.legend_toggle, color: Colors.white),
+                      icon: const Icon(
+                        Icons.legend_toggle,
+                        color: Colors.white,
+                      ),
                       onPressed: () {
                         setState(() {
                           _isShowMenuBar = false;
@@ -317,20 +345,26 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                       IconButton(
                         tooltip: S.current.portrait,
                         onPressed: () async {
-                          SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+                          SystemChrome.setPreferredOrientations([
+                            DeviceOrientation.portraitUp,
+                          ]);
                         },
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.black87,
                           side: const BorderSide(color: Colors.white),
                         ),
-                        icon: const Icon(Icons.screen_rotation, color: Colors.white),
+                        icon: const Icon(
+                          Icons.screen_rotation,
+                          color: Colors.white,
+                        ),
                       ),
                     if (!EnvUtil.isMobile) const SizedBox(width: 12),
                     if (!EnvUtil.isMobile)
                       IconButton(
                         tooltip: S.current.fullScreen,
                         onPressed: () async {
-                          final isFullScreen = await windowManager.isFullScreen();
+                          final isFullScreen = await windowManager
+                              .isFullScreen();
                           LogUtil.v('isFullScreen:::::$isFullScreen');
                           windowManager.setFullScreen(!isFullScreen);
                         },
@@ -342,9 +376,17 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
                           future: windowManager.isFullScreen(),
                           builder: (context, snapshot) {
                             if (snapshot.hasData) {
-                              return Icon(snapshot.data! ? Icons.close_fullscreen : Icons.fit_screen_outlined, color: Colors.white);
+                              return Icon(
+                                snapshot.data!
+                                    ? Icons.close_fullscreen
+                                    : Icons.fit_screen_outlined,
+                                color: Colors.white,
+                              );
                             } else {
-                              return const Icon(Icons.fit_screen_outlined, color: Colors.white);
+                              return const Icon(
+                                Icons.fit_screen_outlined,
+                                color: Colors.white,
+                              );
                             }
                           },
                         ),
@@ -360,9 +402,15 @@ class _TableVideoWidgetState extends State<TableVideoWidget> with WindowListener
               child: IconButton(
                 tooltip: S.current.landscape,
                 onPressed: () async {
-                  SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ]);
                 },
-                style: IconButton.styleFrom(backgroundColor: Colors.black45, iconSize: 20),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black45,
+                  iconSize: 20,
+                ),
                 icon: const Icon(Icons.screen_rotation, color: Colors.white),
               ),
             ),

@@ -25,7 +25,7 @@ def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1, minimum
         'latest_build': number,
         'build_date': local.strftime('%Y-%m-%d'),
         'release_tag': tag,
-        'update_log': ['修复换台竞态及刷新后频道定位', '局域网推送与同步增加临时配对码', '修复源编辑和缓存，启动优先使用缓存', '仅 Windows 11 做过运行验证；双设备配对及其他平台未实机验证'],
+        'update_log': ['Windows 增加置顶按钮及 Ctrl+Shift+T', '新增 Windows 便携版，数据随软件目录迁移', 'README 汇总相对原版的累计功能差异', '仅 Windows 11 做过运行验证，其他平台未实机验证'],
     }
 
 

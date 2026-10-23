@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'util/window_pin_controller.dart';
 import 'util/portable_storage.dart';
 
 import 'package:easy_tv_live/provider/theme_provider.dart';
@@ -37,7 +38,7 @@ void main() async {
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.normal,
-      title: '����TV',
+      title: '极简TV',
     );
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
@@ -54,12 +55,17 @@ void main() async {
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: SelectableText('��Я�����޷���ȡ��д�룬�뽫����������ѹ����д��Ȩ�޵�Ŀ¼�����ԡ�\n$error'),
+            child: SelectableText('便携数据无法读取或写入，请将软件完整解压到有写入权限的目录后重试。\n$error'),
           ),
         ),
       ),
     );
     return;
+  }
+  if (Platform.isWindows) {
+    HardwareKeyboard.instance.addHandler(
+      WindowPinController.instance.handleKey,
+    );
   }
   fvp.registerWith(
     options: {
@@ -104,7 +110,7 @@ class MyApp extends StatelessWidget {
           fontFamily = null;
         }
         return MaterialApp(
-          title: '����TV',
+          title: '极简TV',
           theme: ThemeData(
             brightness: Brightness.dark,
             fontFamily: fontFamily,

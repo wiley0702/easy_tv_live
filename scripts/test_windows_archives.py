@@ -11,7 +11,7 @@ class WindowsArchivesTest(unittest.TestCase):
             root = Path(temporary)
             bundle = root / 'bundle'
             for name in ('easy_tv_live.exe', 'flutter_windows.dll', 'data/app.so',
-                         'user_data/shared_preferences.json', 'portable.flag', 'old.zip'):
+                         'user_data/shared_preferences.json', 'portable.flag', 'old.zip', '便携版使用说明.txt'):
                 file = bundle / name
                 file.parent.mkdir(parents=True, exist_ok=True)
                 file.write_bytes(b'fixture')
@@ -19,6 +19,7 @@ class WindowsArchivesTest(unittest.TestCase):
             for archive in (normal, portable):
                 with ZipFile(archive) as stream:
                     self.assertIsNone(stream.testzip())
+                    self.assertEqual(len(stream.namelist()), len(set(stream.namelist())))
                     self.assertNotIn('user_data/shared_preferences.json', stream.namelist())
                     self.assertNotIn('old.zip', stream.namelist())
                     self.assertIn('data/app.so', stream.namelist())
