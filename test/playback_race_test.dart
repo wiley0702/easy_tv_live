@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'package:easy_tv_live/channel_drawer_page.dart';
 import 'package:easy_tv_live/entity/play_channel_list_model.dart';
@@ -24,14 +25,23 @@ class _Player extends VideoPlayerController {
   final ready = Completer<void>();
   var disposed = false;
   var plays = 0;
+  double lastVolume = -1;
   @override
   Future<void> initialize() async {
     await ready.future;
-    if (!disposed) value = const VideoPlayerValue(duration: Duration(minutes: 1), size: Size(16, 9), isInitialized: true);
+    if (!disposed)
+      value = const VideoPlayerValue(
+        duration: Duration(minutes: 1),
+        size: Size(16, 9),
+        isInitialized: true,
+      );
   }
 
   @override
-  Future<void> setVolume(double volume) async {}
+  Future<void> setVolume(double volume) async {
+    lastVolume = volume;
+  }
+
   @override
   Future<void> play() async {
     plays++;
@@ -60,8 +70,22 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final a = Channel(id: 'a', title: 'A', serialNum: 1, groupIndex: 0, channelIndex: 0, urls: ['https://example.com/a', 'https://example.com/a-fallback']);
-      final b = Channel(id: 'b', title: 'B', serialNum: 2, groupIndex: 0, channelIndex: 1, urls: ['https://example.com/b']);
+      final a = Channel(
+        id: 'a',
+        title: 'A',
+        serialNum: 1,
+        groupIndex: 0,
+        channelIndex: 0,
+        urls: ['https://example.com/a', 'https://example.com/a-fallback'],
+      );
+      final b = Channel(
+        id: 'b',
+        title: 'B',
+        serialNum: 2,
+        groupIndex: 0,
+        channelIndex: 1,
+        urls: ['https://example.com/b'],
+      );
       final playlist = PlayChannelListModel(
         playList: [
           PlayModel(group: 'Group', channel: [a, b]),
@@ -71,9 +95,10 @@ void main() {
         ..clear()
         ..addAll({'1': a, '2': b});
       final players = <_Player>[];
+      final theme = ThemeProvider()..setSoftwareVolume(0.35);
       await tester.pumpWidget(
         ChangeNotifierProvider(
-          create: (_) => ThemeProvider(),
+          create: (_) => theme,
           child: MaterialApp(
             builder: EasyLoading.init(),
             home: LiveHomePage(
@@ -99,7 +124,14 @@ void main() {
         first.ready.complete();
         await tester.pump();
         await tester.pump();
-        final moved = Channel(id: 'a', title: 'A', serialNum: 2, groupIndex: 0, channelIndex: 1, urls: a.urls);
+        final moved = Channel(
+          id: 'a',
+          title: 'A',
+          serialNum: 2,
+          groupIndex: 0,
+          channelIndex: 1,
+          urls: a.urls,
+        );
         final updated = PlayChannelListModel(
           playList: [
             PlayModel(group: 'Group', channel: [b, moved]),
@@ -114,11 +146,15 @@ void main() {
       } else if (scenario == 'delete') {
         M3uUtil.refreshedPlaylist.value = PlayChannelListModel(playList: []);
       } else {
-        final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold).first);
+        final scaffold = tester.state<ScaffoldState>(
+          find.byType(Scaffold).first,
+        );
         scaffold.openDrawer();
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
-        tester.widget<ChannelDrawerPage>(find.byType(ChannelDrawerPage).first).onTapChannel!(b);
+        tester
+            .widget<ChannelDrawerPage>(find.byType(ChannelDrawerPage).first)
+            .onTapChannel!(b);
       }
       await tester.pump();
       await tester.pump();
@@ -132,8 +168,19 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 3));
       expect(first.plays, scenario == 'refresh' ? 1 : 0);
-      expect(players.length, scenario == 'delete' || scenario == 'refresh' ? 1 : 2);
-      if (scenario != 'delete') expect(players.last.plays, 1);
+      expect(
+        players.length,
+        scenario == 'delete' || scenario == 'refresh' ? 1 : 2,
+      );
+      if (scenario != 'delete') {
+        expect(players.last.plays, 1);
+        expect(players.last.lastVolume, Platform.isWindows ? 0.35 : 1);
+        if (Platform.isWindows) {
+          theme.setSoftwareVolume(0);
+          await tester.pump();
+          expect(players.last.lastVolume, 0);
+        }
+      }
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 20));
       expect(tester.takeException(), isNull);

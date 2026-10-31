@@ -31,7 +31,8 @@ import 'widget/empty_page.dart';
 class LiveHomePage extends StatefulWidget {
   const LiveHomePage({super.key, this.initialPlaylist, this.controllerFactory});
   final PlayChannelListModel? initialPlaylist;
-  final VideoPlayerController Function(Uri, Map<String, String>)? controllerFactory;
+  final VideoPlayerController Function(Uri, Map<String, String>)?
+  controllerFactory;
 
   @override
   State<LiveHomePage> createState() => _LiveHomePageState();
@@ -57,10 +58,26 @@ class _LiveHomePageState extends State<LiveHomePage> {
 
   int _channelSerialNum = 1;
 
+  ThemeProvider? _volumeProvider;
+
+  void _onSoftwareVolumeChanged() {
+    final controller = _playerController;
+    if (!mounted || controller == null || !controller.value.isInitialized)
+      return;
+    unawaited(
+      controller.setVolume(_volumeProvider!.softwareVolume).catchError((
+        Object error,
+      ) {
+        LogUtil.e('Player volume update failed: $error');
+      }),
+    );
+  }
+
   int _playGeneration = 0;
   Timer? _retryTimer;
 
-  bool _isCurrentPlayback(int generation) => mounted && generation == _playGeneration;
+  bool _isCurrentPlayback(int generation) =>
+      mounted && generation == _playGeneration;
 
   Future<void> _disposeController(VideoPlayerController? controller) async {
     if (controller == null) return;
@@ -107,13 +124,18 @@ class _LiveHomePageState extends State<LiveHomePage> {
           widget.controllerFactory?.call(Uri.parse(url), headers) ??
           VideoPlayerController.networkUrl(
             Uri.parse(url),
-            videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: false, mixWithOthers: false),
+            videoPlayerOptions: VideoPlayerOptions(
+              allowBackgroundPlayback: false,
+              mixWithOthers: false,
+            ),
             httpHeaders: headers,
           );
       _playerController = controller;
       await controller.initialize().timeout(Duration(seconds: timeout));
       if (!_isCurrentPlayback(generation)) return;
-      await controller.setVolume(1);
+      await controller.setVolume(
+        Platform.isWindows ? _volumeProvider!.softwareVolume : 1,
+      );
       if (!_isCurrentPlayback(generation)) return;
       controller.addListener(_videoListener);
       await controller.play();
@@ -127,7 +149,8 @@ class _LiveHomePageState extends State<LiveHomePage> {
       LogUtil.e('Playback initialization failed: $error');
       _playerController = null;
       await _disposeController(controller);
-      if (_isCurrentPlayback(generation)) _scheduleNextLine(generation, channel, line);
+      if (_isCurrentPlayback(generation))
+        _scheduleNextLine(generation, channel, line);
     }
   }
 
@@ -145,7 +168,9 @@ class _LiveHomePageState extends State<LiveHomePage> {
     setState(() => toastString = S.current.switchLine(next + 1));
     _retryTimer = Timer(const Duration(seconds: 2), () {
       _retryTimer = null;
-      if (!_isCurrentPlayback(generation) || !identical(channel, _currentChannel)) return;
+      if (!_isCurrentPlayback(generation) ||
+          !identical(channel, _currentChannel))
+        return;
       _sourceIndex = next;
       _playVideo('fallback');
     });
@@ -160,7 +185,8 @@ class _LiveHomePageState extends State<LiveHomePage> {
       _scheduleNextLine(_playGeneration, channel, _sourceIndex);
       return;
     }
-    if (isBuffering != controller.value.isBuffering || isPlaying != controller.value.isPlaying) {
+    if (isBuffering != controller.value.isBuffering ||
+        isPlaying != controller.value.isPlaying) {
       setState(() {
         isBuffering = controller.value.isBuffering;
         isPlaying = controller.value.isPlaying;
@@ -182,6 +208,10 @@ class _LiveHomePageState extends State<LiveHomePage> {
   @override
   void initState() {
     super.initState();
+    if (Platform.isWindows) {
+      _volumeProvider = context.read<ThemeProvider>();
+      _volumeProvider!.addListener(_onSoftwareVolumeChanged);
+    }
     M3uUtil.refreshedPlaylist.addListener(_onSourceRefreshed);
     EasyLoading.instance
       ..loadingStyle = EasyLoadingStyle.custom
@@ -204,7 +234,10 @@ class _LiveHomePageState extends State<LiveHomePage> {
       if (context.read<ThemeProvider>().useAutoUpdate && Platform.isAndroid) {
         final url = await CheckVersionUtil.checkVersionAndAutoUpdate();
         if (mounted && url != null) {
-          EasyLoading.showToast('新版本开始下载，稍后为您自动安装', toastPosition: EasyLoadingToastPosition.top);
+          EasyLoading.showToast(
+            '新版本开始下载，稍后为您自动安装',
+            toastPosition: EasyLoadingToastPosition.top,
+          );
           context.read<DownloadProvider>().downloadApk(url);
         }
       } else {
@@ -219,6 +252,7 @@ class _LiveHomePageState extends State<LiveHomePage> {
 
   @override
   dispose() {
+    _volumeProvider?.removeListener(_onSoftwareVolumeChanged);
     _playGeneration++;
     _retryTimer?.cancel();
     M3uUtil.refreshedPlaylist.removeListener(_onSourceRefreshed);
@@ -250,8 +284,15 @@ class _LiveHomePageState extends State<LiveHomePage> {
     if ((_channelListModel?.playList?.isNotEmpty) ?? false) {
       if (mounted) {
         final preNum = context.read<ThemeProvider>().prePlaySerialNum;
-        final matched = isSkipRestSerialNum ? PlaylistSelection.match(previous, _channelListModel!) : null;
-        final channel = matched ?? (previous == null ? M3uUtil.serialNumMap[preNum.toString()] : null) ?? M3uUtil.serialNumMap['1'];
+        final matched = isSkipRestSerialNum
+            ? PlaylistSelection.match(previous, _channelListModel!)
+            : null;
+        final channel =
+            matched ??
+            (previous == null
+                ? M3uUtil.serialNumMap[preNum.toString()]
+                : null) ??
+            M3uUtil.serialNumMap['1'];
         final sameStream =
             matched != null &&
             previousUa == _channelListModel?.uaHint &&
@@ -276,7 +317,8 @@ class _LiveHomePageState extends State<LiveHomePage> {
           }
         }
         if (_channelListModel!.type == PlayListType.m3u) {
-          if (_channelListModel?.epgUrl != null && _channelListModel?.epgUrl != '') {
+          if (_channelListModel?.epgUrl != null &&
+              _channelListModel?.epgUrl != '') {
             EpgUtil.loadEPGXML(_channelListModel!.epgUrl!);
           }
         }
@@ -326,7 +368,11 @@ class _LiveHomePageState extends State<LiveHomePage> {
             isPlaying: isPlaying,
             aspectRatio: aspectRatio,
             onChangeSubSource: _parseData,
-            drawChild: ChannelDrawerPage(channelListModel: _channelListModel, onTapChannel: _onTapChannel, isLandscape: false),
+            drawChild: ChannelDrawerPage(
+              channelListModel: _channelListModel,
+              onTapChannel: _onTapChannel,
+              isLandscape: false,
+            ),
             onPreviousChannel: _previousChannel,
             onNextChannel: _nextChannel,
             onSwitchSource: _switchSource,
@@ -338,11 +384,20 @@ class _LiveHomePageState extends State<LiveHomePage> {
             canPop: false,
             onPopInvokedWithResult: (didPop, _) {
               if (!didPop) {
-                SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+                SystemChrome.setPreferredOrientations([
+                  DeviceOrientation.portraitUp,
+                  DeviceOrientation.landscapeLeft,
+                  DeviceOrientation.landscapeRight,
+                ]);
               }
             },
             child: Scaffold(
-              drawer: ChannelDrawerPage(channelListModel: _channelListModel, onTapChannel: _onTapChannel, isLandscape: true, isOpen: _drawerIsOpen),
+              drawer: ChannelDrawerPage(
+                channelListModel: _channelListModel,
+                onTapChannel: _onTapChannel,
+                isLandscape: true,
+                isOpen: _drawerIsOpen,
+              ),
               drawerEdgeDragWidth: MediaQuery.of(context).size.width * 0.3,
               drawerScrimColor: Colors.transparent,
               onDrawerChanged: (bool isOpened) {
@@ -354,14 +409,33 @@ class _LiveHomePageState extends State<LiveHomePage> {
                 builder: (context) {
                   return CallbackShortcuts(
                     bindings: <ShortcutActivator, VoidCallback>{
-                      const SingleActivator(LogicalKeyboardKey.arrowUp): _previousChannel,
-                      const SingleActivator(LogicalKeyboardKey.arrowDown): _nextChannel,
-                      const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _pushChannelDrawer(context),
-                      const SingleActivator(LogicalKeyboardKey.arrowRight): () => _switchSource(),
-                      const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _changeChannelSources(),
-                      if (Platform.isMacOS) const SingleActivator(LogicalKeyboardKey.comma, meta: true): () => _pushSettingPage(context),
+                      const SingleActivator(LogicalKeyboardKey.arrowUp):
+                          _previousChannel,
+                      const SingleActivator(LogicalKeyboardKey.arrowDown):
+                          _nextChannel,
+                      const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                          _pushChannelDrawer(context),
+                      const SingleActivator(
+                        LogicalKeyboardKey.arrowRight,
+                      ): () =>
+                          _switchSource(),
+                      const SingleActivator(
+                        LogicalKeyboardKey.arrowRight,
+                        alt: true,
+                      ): () =>
+                          _changeChannelSources(),
+                      if (Platform.isMacOS)
+                        const SingleActivator(
+                          LogicalKeyboardKey.comma,
+                          meta: true,
+                        ): () =>
+                            _pushSettingPage(context),
                       if (Platform.isWindows || Platform.isLinux)
-                        const SingleActivator(LogicalKeyboardKey.comma, control: true): () => _pushSettingPage(context),
+                        const SingleActivator(
+                          LogicalKeyboardKey.comma,
+                          control: true,
+                        ): () =>
+                            _pushSettingPage(context),
                     },
                     child: Focus(
                       autofocus: true,
@@ -422,7 +496,12 @@ class _LiveHomePageState extends State<LiveHomePage> {
         return SingleChildScrollView(
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 40),
+            padding: const EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: 40,
+            ),
             color: Colors.transparent,
             child: Wrap(
               spacing: 10,
@@ -445,15 +524,24 @@ class _LiveHomePageState extends State<LiveHomePage> {
                       top: -2,
                       right: 8,
                       child: FutureBuilder<Color>(
-                        future: LatencyCheckerUtil.checkLatencies(sources[index]),
+                        future: LatencyCheckerUtil.checkLatencies(
+                          sources[index],
+                        ),
                         initialData: Colors.transparent,
-                        builder: (BuildContext context, AsyncSnapshot<Color> snapshot) {
-                          return Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(color: snapshot.data, borderRadius: BorderRadius.circular(4)),
-                          );
-                        },
+                        builder:
+                            (
+                              BuildContext context,
+                              AsyncSnapshot<Color> snapshot,
+                            ) {
+                              return Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: snapshot.data,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              );
+                            },
                       ),
                     ),
                   ],

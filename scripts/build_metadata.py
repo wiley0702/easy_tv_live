@@ -25,7 +25,7 @@ def generate(now, ref_type='', ref_name='', run_number=1, run_attempt=1, minimum
         'latest_build': number,
         'build_date': local.strftime('%Y-%m-%d'),
         'release_tag': tag,
-        'update_log': ['Windows 增加置顶按钮及 Ctrl+Shift+T', '新增 Windows 便携版，数据随软件目录迁移', 'README 汇总相对原版的累计功能差异', '仅 Windows 11 做过运行验证，其他平台未实机验证'],
+        'update_log': ['Windows 改为软件独立音量，不影响系统音量', '换台和重启后恢复软件音量，支持便携迁移', '仅 Windows 11 做过运行验证，其他平台未实机验证'],
     }
 
 

@@ -22,6 +22,7 @@ This list describes the cumulative functional differences introduced by this for
 - Restore the playing station by identity after refresh, retaining an unchanged stream and User-Agent; start from valid cached channels and refresh in the background.
 - Temporary six-digit pairing codes protect LAN subscription/configuration push and sync. Sync preserves local file sources on the receiver; both peers need updated fork clients.
 - Donation entries are hidden; desktop/TV settings open subscriptions first. QR source input remains available.
+- Windows per-player volume gestures leave system master volume unchanged. The app restores volume after channel changes and restarts; portable builds store it in `user_data`.
 - Windows always-on-top button in playback controls and the empty-channel page. Ctrl+Shift+T toggles while the app has focus; the setting resets on restart.
 - Separate Windows portable ZIP stores settings, subscriptions and channel caches in the adjacent `user_data` folder for migration.
 - Public version remains 2.9.9 with a build date displayed in the app; Android packages use this fork's independent signing certificate.

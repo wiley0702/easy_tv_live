@@ -1,7 +1,7 @@
 {
   "version": "2.9.9",
-  "date": "2026-10-23",
-  "purpose": "Publish Windows always-on-top controls, portable packages and cumulative fork differences",
+  "date": "2026-10-31",
+  "purpose": "Publish Windows per-player volume with persistence and portable migration; keep dependency versions unchanged",
   "signing": "independent-pkcs12-v1",
   "runtime_validated_os": [
     "Windows 11"

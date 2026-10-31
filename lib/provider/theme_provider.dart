@@ -6,6 +6,16 @@ import 'package:sp_util/sp_util.dart';
 import '../util/font_util.dart';
 
 class ThemeProvider extends ChangeNotifier {
+  double _softwareVolume = 1.0;
+  double get softwareVolume => _softwareVolume;
+
+  void setSoftwareVolume(double value, {bool persist = true}) {
+    if (!value.isFinite) return;
+    _softwareVolume = value.clamp(0.0, 1.0);
+    if (persist) SpUtil.putDouble('softwareVolume', _softwareVolume);
+    notifyListeners();
+  }
+
   String _fontFamily = 'system';
   double _textScaleFactor = 1.0;
   String _fontUrl = '';
@@ -27,12 +37,18 @@ class ThemeProvider extends ChangeNotifier {
   bool get isBingBg => _isBingBg;
   int get prePlaySerialNum => _prePlaySerialNum;
   int get timeoutSwitchLine => _timeoutSwitchLine;
-  bool get isOpenRemoteControl => _remoteControlLink != null && _remoteControlLink!.isNotEmpty;
+  bool get isOpenRemoteControl =>
+      _remoteControlLink != null && _remoteControlLink!.isNotEmpty;
   String? get remoteControlLink => _remoteControlLink;
 
   ThemeProvider() {
+    final savedVolume = SpUtil.getDouble('softwareVolume', defValue: 1.0)!;
+    _softwareVolume = savedVolume.isFinite ? savedVolume.clamp(0.0, 1.0) : 1.0;
     _useAutoUpdate = SpUtil.getBool('autoUpdate', defValue: false)!;
-    _useLightVersionCheck = SpUtil.getBool('lightVersionCheck', defValue: true)!;
+    _useLightVersionCheck = SpUtil.getBool(
+      'lightVersionCheck',
+      defValue: true,
+    )!;
     _useDataValueProxy = SpUtil.getInt('dataValueProxy', defValue: 1)!;
     _fontFamily = SpUtil.getString('appFontFamily', defValue: 'system')!;
     _fontUrl = SpUtil.getString('appFontUrl', defValue: '')!;
