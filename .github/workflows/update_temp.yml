@@ -1,11 +1,6 @@
-name: 每日更新temp文件
+name: Update temp (manual only)
 
 on:
-  schedule:
-    # 北京时间7点（UTC 23点）执行
-    - cron: "0 23 * * *"
-    # 北京时间19点（UTC 11点）执行
-    # - cron: "0 11 * * *"
   workflow_dispatch:  # 保留手动触发
 
 jobs:
